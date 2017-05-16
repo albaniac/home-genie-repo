@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>73</Address>
+  <Name>IR/RF remote control events forwarding</Name>
+  <Description>Forwards received IR/RF remote input to another HomeGenie box.</Description>
+  <Group>Interconnections</Group>
+  <Type>CSharp</Type>
+  <ActivationTime xsi:nil="true" />
+  <TriggerTime xsi:nil="true" />
+  <ScriptCondition>Program.Setup(()=&gt;{
+
+  	Program.AddInputField("CellAddress", "192.168.0.?", "1. Remote HG server address");
+  	Program.AddInputField("CellUsername", "", "2. Username");
+  	Program.AddInputField("CellPassword", "", "3. Password");
+  
+});
+
+return true;</ScriptCondition>
+  <ScriptSource>// We want to do further processing whenever a module changes 
+When.ModuleParameterChange( (module, property) =&gt; {
+  	var celladdress  = Program.InputField("CellAddress").Value;
+  	var cellusername = Program.InputField("CellUsername").Value;
+  	var cellpassword = Program.InputField("CellPassword").Value;
+  	// ROUTE IR/RF EVENT TO REMOTE HG CELL
+  	if (!celladdress.Contains("?") &amp;&amp; property.Name == "Receiver.RawData")
+    {
+  		Net
+          .WithCredentials(cellusername, cellpassword)
+          .SignalModuleEvent(celladdress, module, property);
+    }
+  	// returning true, will route event to other listeners
+	return true;  
+});
+//
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>true</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <IsEnabled>false</IsEnabled>
+</ProgramBlock>

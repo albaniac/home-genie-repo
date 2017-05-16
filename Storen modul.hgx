@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// Put your trigger code logic here.
+// To execute the Code To Run,
+// use a 'return true' or 'return false' otherwise.
+
+Program.Setup(()=&gt;{
+    Program.AddOption("HCAddress", "192.168.0.?", "HapCan Ethernet IP Address","text");
+  	Program.AddOption("HCPort","1003", "HapCan ethernet port","text");
+  	//
+  	// Create 5 virtual modules with the domain "HomeAutomation.PhilipsHue" and with address from 1 to 5
+  	// "Dimmer" is the type and "GenericColorLight" is the widget to be used to display the virtual module
+  	// See directory "html/pages/control/widgets/" for widget list
+  	Program.AddVirtualModules("HomeAutomation.HapCan", "Shutter", "homegenie/generic/shutter", 1, 9);
+  	Program.AddFeature ("HomeAutomation.HapCan", "Shutter","NodeNr", "Numer modulu", "text");
+  	Program.AddFeature ("HomeAutomation.HapCan", "Shutter","GroupNr", "Numer grupy", "text");
+  	Program.AddFeature ("HomeAutomation.HapCan", "Shutter","Channel", "Kanal", "text");
+  
+  
+});
+return false;
+</ScriptCondition>
+  <ScriptSource>
+/*
+Action&lt;string&gt; 
+HandleStringReceived = (string message) =&gt; {
+  	// this will be called every time a message is received from serial port
+	Program.Notify("HapCan String", message);
+    //          Program.RaiseEvent( "HapCan message", "Jest kurewska wiadomosc", "HapCan module");
+};
+*/
+Action&lt;byte[]&gt; HandleMessageReceived = (byte[] message) =&gt; {
+  	// this will be called every time a message is received from serial port
+	Program.Notify("HapCan Bytes", BitConverter.ToString(message));
+//    Program.RaiseEvent("HapCan message", "length " + message.Length, "HapCan module");
+/*
+  	int count = 0;
+    foreach (byte element in message)
+    {
+      count += 1;
+      Program.RaiseEvent("HapCan message", "byte " + count + "=" + element.ToString("X2"), "HapCan module");
+    }    
+*/
+//         Program.RaiseEvent("HapCan message", "Jest kurwa wiadomosc", "HapCan module");
+    //         Program.RaiseEvent("HapCan message", "Jest kurwa wiadomosc", "HapCan module");
+  };
+
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt; {
+  	// this will be called every time the connection status changes
+  	Program.Notify("HapCan Status", connected ? "CONNECTED!" : "DISCONNECTED!");
+  	//Program.RaiseEvent("HapCan message", connected ? "CONNECTED! event" : "DISCONNECTED! event", "HapCan module");
+};
+  
+
+// open the serial port channel and register handlers
+TcpClient
+  .Service( "192.168.88.90" )
+  	.OnMessageReceived( HandleMessageReceived )
+  	.OnStatusChanged( HandleStatusChanged )
+//  	.OnStringReceived( HandleStringReceived )
+  	.Connect( 1003 ); // change baud rate if needed
+
+
+Func&lt;byte[], byte&gt; calculate_checksum = (byte[] message) =&gt; 
+{
+            //calculate the checksum
+            byte checksum = 0;
+            for(int i=1; i&lt;13; i++)
+                checksum += (byte)message[i];
+            //display
+            //label3.Text = checksum.ToString("X2");
+  	return checksum;
+};
+
+var HapCanModules = Modules.InDomain("HomeAutomation.HapCan");
+
+// - http://&amp;lt;hg_address&amp;gt;/api/HomeAutomation.PhilipsHue/...
+When.WebServiceCallReceived("HomeAutomation.HapCan", ( args ) =&gt; 
+{
+    if (!TcpClient.IsConnected) {
+	  	Program.Notify("HapCan Status", "DISCONNECTED!");
+  		return false;  
+    }
+  	string[] reqs = ((string)args).Split('/');
+    //string domain = reqs[0];
+    try
+    {
+      string lightnumber = reqs[1];
+      string command = reqs[2];
+      string parameter = ""; if (reqs.Length &gt; 3) parameter = Uri.UnescapeDataString(reqs[3]);
+      //
+      var module = HapCanModules.WithAddress(lightnumber).Get();
+      //
+            byte[] txBytes = new byte[15];
+      switch(command)
+      {
+		// eg. http://&amp;lt;hg_address&amp;gt;/api/HomeAutomation.PhilipsHue/&amp;lt;light_number&amp;gt;/Control.On
+        case "Control.On":
+        case "Control.Up":
+            try
+            {
+                //form frame
+                txBytes[0] = 0xAA;                              //start byte
+                txBytes[14] = 0xA5;                             //stop byte
+                                                     
+                txBytes[1] = 0x10;                              
+                txBytes[2] = 0xA0;                              
+                txBytes[3] = 0x05;   //komputer node nr                           
+                txBytes[4] = 0x01;    // komputer group nr                          
+                txBytes[5] = 0x03; //kierunek  0x00 STOP, 0x03 UP, 0x04 DOWN                             
+                txBytes[6] = Convert.ToByte(module.Parameter("Channel").Value);//.0x01; //channel                              
+                txBytes[7] = Convert.ToByte(module.Parameter("NodeNr").Value);//0x01;  //NodeNr                             
+                txBytes[8] = Convert.ToByte(module.Parameter("GroupNr").Value);//0x04; //GroupNr                             
+                txBytes[9] = 0x00;                              
+                txBytes[10] = 0xFF;                              
+                txBytes[11] = 0xFF;                              
+                txBytes[12] = 0xFF;                              
+                txBytes[13] = calculate_checksum(txBytes); // checksum                              
+
+              //Program.RaiseEvent(module, "HapCan message", BitConverter.ToString(txBytes), "HapCan module");
+              
+               TcpClient.SendMessage(txBytes);
+                
+              //display
+                /*string txLine = "";
+                for (int i = 0; i &amp;lt; 15; i++)
+                    txLine += (txBytes[i].ToString("X2") + " ");
+                AddText("-----");
+                AddText("TX -&amp;gt;  " + txLine);*/
+            }
+            catch (Exception ex)
+            {
+              Program.RaiseEvent(module, "HapCan message", ex.Message, "HapCan module");
+                //AddText(ex.Message);
+                //Disconnect_Click(null,null);
+            }
+        
+        
+        
+        
+        
+        
+        
+        //bridgeapicall(lightnumber, "{ \"on\" : true }");
+        	Program.RaiseEvent(module, "Status.Level", "1", "HapCan module");
+        	break;
+		// eg. http://&amp;lt;hg_address&amp;gt;/api/HomeAutomation.PhilipsHue/&amp;lt;light_number&amp;gt;/Control.Off
+        case "Control.Off":
+        case "Control.Down":
+            try
+            {
+                //form frame
+                txBytes[0] = 0xAA;                              //start byte
+                txBytes[14] = 0xA5;                             //stop byte
+                                                     
+                txBytes[1] = 0x10;                              
+                txBytes[2] = 0xA0;                              
+                txBytes[3] = 0x05;   //komputer node nr                           
+                txBytes[4] = 0x01;    // komputer group nr                          
+                txBytes[5] = 0x04; //kierunek  0x00 STOP, 0x03 UP, 0x04 DOWN                             
+                txBytes[6] = Convert.ToByte(module.Parameter("Channel").Value);//.0x01; //channel                              
+                txBytes[7] = Convert.ToByte(module.Parameter("NodeNr").Value);//0x01;  //NodeNr                             
+                txBytes[8] = Convert.ToByte(module.Parameter("GroupNr").Value);//0x04; //GroupNr                             
+                txBytes[9] = 0x00;                              
+                txBytes[10] = 0xFF;                              
+                txBytes[11] = 0xFF;                              
+                txBytes[12] = 0xFF;                              
+                txBytes[13] = calculate_checksum(txBytes); // checksum                              
+
+              //Program.RaiseEvent(module, "HapCan message", BitConverter.ToString(txBytes), "HapCan module");
+              
+               TcpClient.SendMessage(txBytes);
+                
+              //display
+                /*string txLine = "";
+                for (int i = 0; i &amp;lt; 15; i++)
+                    txLine += (txBytes[i].ToString("X2") + " ");
+                AddText("-----");
+                AddText("TX -&amp;gt;  " + txLine);*/
+            }
+            catch (Exception ex)
+            {
+              Program.RaiseEvent(module, "HapCan message", ex.Message, "HapCan module");
+                //AddText(ex.Message);
+                //Disconnect_Click(null,null);
+            }
+    	    //bridgeapicall(lightnumber, "{ \"on\" : false }");
+        	Program.RaiseEvent(module, "Status.Level", "0", "HapCan module");
+        	break;
+
+        case "Control.Stop":
+            try
+            {
+                //form frame
+                txBytes[0] = 0xAA;                              //start byte
+                txBytes[14] = 0xA5;                             //stop byte
+                                                     
+                txBytes[1] = 0x10;                              
+                txBytes[2] = 0xA0;                              
+                txBytes[3] = 0x05;   //komputer node nr                           
+                txBytes[4] = 0x01;    // komputer group nr                          
+                txBytes[5] = 0x00; //kierunek  0x00 STOP, 0x03 UP, 0x04 DOWN                             
+                txBytes[6] = Convert.ToByte(module.Parameter("Channel").Value);//.0x01; //channel                              
+                txBytes[7] = Convert.ToByte(module.Parameter("NodeNr").Value);//0x01;  //NodeNr                             
+                txBytes[8] = Convert.ToByte(module.Parameter("GroupNr").Value);//0x04; //GroupNr                             
+                txBytes[9] = 0x00;                              
+                txBytes[10] = 0xFF;                              
+                txBytes[11] = 0xFF;                              
+                txBytes[12] = 0xFF;                              
+                txBytes[13] = calculate_checksum(txBytes); // checksum                              
+
+              //Program.RaiseEvent(module, "HapCan message", BitConverter.ToString(txBytes), "HapCan module");
+              
+               TcpClient.SendMessage(txBytes);
+                
+              //display
+                /*string txLine = "";
+                for (int i = 0; i &amp;lt; 15; i++)
+                    txLine += (txBytes[i].ToString("X2") + " ");
+                AddText("-----");
+                AddText("TX -&amp;gt;  " + txLine);*/
+            }
+            catch (Exception ex)
+            {
+              Program.RaiseEvent(module, "HapCan message", ex.Message, "HapCan module");
+                //AddText(ex.Message);
+                //Disconnect_Click(null,null);
+            }
+    	    //bridgeapicall(lightnumber, "{ \"on\" : false }");
+        	Program.RaiseEvent(module, "Status.Level", "0", "HapCan module");
+        	break;
+        
+        case "Control.Toggle":
+        	if (module.Parameter("Status.Level").DecimalValue == 0)
+            {
+              	//bridgeapicall(lightnumber, "{ \"on\" : true }");
+              	Program.RaiseEvent(module, "Status.Level", "1", "HapCan module");
+            }
+        	else
+            {
+              	//bridgeapicall(lightnumber, "{ \"on\" : false }");
+	        	Program.RaiseEvent(module, "Status.Level", "0", "HapCan module");
+            }
+        	break;
+        case "Control.Level":
+    	    //bridgeapicall(lightnumber, "{ \"bri\" : " + ((int)(double.Parse(parameter) * 2.5)).ToString() + " }");
+            Program.RaiseEvent(module, "Status.Level", (double.Parse(parameter) / 100D).ToString(), "HapCan module");
+        	break;
+        case "Status.Level":
+    	    //bridgeapicall(lightnumber, "{ \"bri\" : " + ((int)(double.Parse(parameter) * 2.5)).ToString() + " }");
+            //Program.RaiseEvent(module, "Status.Level", (double.Parse(parameter) / 100D).ToString(), "HapCan module");
+	      	break;
+		// eg. http://&amp;lt;hg_address&amp;gt;/api/HomeAutomation.PhilipsHue/&amp;lt;light_number&amp;gt;/Control.ColorHsb/&amp;lt;hue&amp;gt;,&amp;lt;sat&amp;gt;,&amp;lt;bri&amp;gt;
+/*        case "Control.ColorHsb":
+        	string[] values = parameter.Split(',');
+        	double transition = 5;
+        	if (values.Length &gt; 3) transition = ((int)(double.Parse(values[3]) * 10)); 
+    	    bridgeapicall(lightnumber, "{ \"on\" : true" + 
+                        ", \"hue\" : " + (int)(double.Parse(values[0], System.Globalization.CultureInfo.InvariantCulture) * 65536) + 
+                        ", \"sat\" : " + (int)(double.Parse(values[1], System.Globalization.CultureInfo.InvariantCulture) * 255) + 
+                        ", \"bri\" : " + (int)(double.Parse(values[2], System.Globalization.CultureInfo.InvariantCulture) * 255) + 
+						", \"transitiontime\" : " + transition.ToString() +  "}");
+            Program.RaiseEvent(module, "Status.Level", (double.Parse(values[2], System.Globalization.CultureInfo.InvariantCulture)).ToString(), "HapCan module");
+            Program.RaiseEvent(module, "Status.ColorHsb", parameter, "HapCan module");
+        	break; */
+      }
+      //
+      return "{ 'ResponseValue' : 'OK' }";    
+    } catch (Exception e) { 
+      
+    	Program.Notify("HapCan ERROR!", e.Message);
+                       
+    }
+    return "{ 'ResponseValue' : 'ERROR' }";
+});
+
+
+/*
+------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------
+*/
+
+/*
+When.ModuleParameterIsChanging( (module, parameter) =&gt;
+{
+    if (module.Is("Wykusz Lewa") &amp;amp;&amp;amp; parameter.Is("Control.On"))
+    {
+        // ...
+        // stop event propagation
+            Program.RaiseEvent("Status.ColorHsb", "DUPA", "HapCan module");
+        return false;
+    }
+    // continue event propagation
+            //Program.RaiseEvent("Status.ColorHsb", "JASIO", "HapCan module");
+    return true;
+}); 
+
+*/
+                   
+
+/*
+while (Program.IsEnabled)
+{
+ 	if ( !TcpClient.IsConnected ){
+        Program.RaiseEvent("HapCan message", "Rozlaczony, pr?ba polaczenia", "HapCan module");
+          TcpClient
+            .Service( "192.168.88.90" )
+              .OnMessageReceived( HandleMessageReceived )
+              .OnStatusChanged( HandleStatusChanged )
+          //  	.OnStringReceived( HandleStringReceived )
+              .Connect( 1003 ); // change baud rate if needed
+    }else{
+      Program.RaiseEvent("HapCan message", "Polaczony", "HapCan module");
+    } 
+  Pause(30);
+
+}
+*/
+
+//Program.RaiseEvent("HapCan", "Ide spac", "HapCan module");
+Program.GoBackground();
+</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>HapCan</Name>
+  <Description>Testowy program do sterowania urz?dzeniami systemu HAPCAN</Description>
+  <Group>HAPCAN</Group>
+  <Features>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.HapCan</ForDomains>
+      <ForTypes>Shutter</ForTypes>
+      <Property>NodeNr</Property>
+      <Description>Numer modulu</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.HapCan</ForDomains>
+      <ForTypes>Shutter</ForTypes>
+      <Property>GroupNr</Property>
+      <Description>Numer grupy</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.HapCan</ForDomains>
+      <ForTypes>Shutter</ForTypes>
+      <Property>Channel</Property>
+      <Description>Kanal</Description>
+    </ProgramFeature>
+  </Features>
+  <ActivationTime>2015-09-27T06:45:21.560287Z</ActivationTime>
+  <TriggerTime>2015-09-27T06:45:26.896718Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>35</Address>
+  <Name>Sunrise/Sunset Lights Control</Name>
+  <Description>Turn on/off a device when the sun set/rise.</Description>
+  <Group>Features</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2013-12-07T09:20:17.3194708Z</ActivationTime>
+  <TriggerTime>2013-12-07T09:19:58.1313733Z</TriggerTime>
+  <ScriptCondition>// this Setup delegate will be executed once, when program become active
+Program.Setup(()=&gt;
+{
+	Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOn", "Toggle On when the Sun sets");  
+  	Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOff", "Toggle Off when the Sun sets");
+	Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOff", "Toggle Off when the Sun rises");
+  	Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOn", "Toggle On when the Sun rises");
+});
+//
+Pause(60); // pause a minute before next check
+//
+return true; // execute the "Code To Run"
+</ScriptCondition>
+  <ScriptSource>string sunrise = Program.WithName("Weather Underground").Parameter("Astronomy.Sunrise").Value;
+string sunset = Program.WithName("Weather Underground").Parameter("Astronomy.Sunset").Value;
+
+if (DateTime.Now.ToString("HH:mm") == sunrise)
+{
+	Modules.WithFeature("HomeGenie.SunRiseOff").Off();
+  	Modules.WithFeature("HomeGenie.SunRiseOn").On();
+}
+else if (DateTime.Now.ToString("HH:mm") == sunset)
+{
+  	Modules.WithFeature("HomeGenie.SunSetOff").Off();
+	Modules.WithFeature("HomeGenie.SunSetOn").On();  	
+}
+</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

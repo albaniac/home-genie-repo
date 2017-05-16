@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1010</Address>
+  <Name>TcpClient test</Name>
+  <Description />
+  <Group>HAL Specific</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2014-01-27T12:17:18.042932Z</ActivationTime>
+  <TriggerTime xsi:nil="true" />
+  <ScriptCondition>// A "return true;" statement at any point of this code block, will cause the program to run.
+// For manually activated program, just leave a "return false" statement here.
+
+return false;
+</ScriptCondition>
+  <ScriptSource>var remoteserver = "localhost";
+  
+Action&lt;string&gt; 
+HandleStringReceived = (string message) =&gt; {
+  
+  	// this will be called every time a message is received from the remote endpoint
+	//Program.Notify("TcpClient String", message);
+  
+};
+
+Action&lt;byte[]&gt; 
+HandleMessageReceived = (byte[] message) =&gt; {
+  
+  	// this will be called every time a message is received from the remote endpoint
+	Program.Notify("TcpClient Bytes", BitConverter.ToString(message));
+  
+};
+
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt; {
+  	
+  	// this will be called every time the connection status changes
+  	Program.Notify("TcpClient Status", connected ? "CONNECTED!" : "DISCONNECTED!");
+  
+};
+
+// open the serial port channel and register handlers
+TcpClient
+  	.Service( remoteserver ) // server
+  	.OnStatusChanged( HandleStatusChanged )
+  	.OnMessageReceived( HandleMessageReceived )
+  	.OnStringReceived( HandleStringReceived )
+  	.Connect( 80 ); // port
+
+// this is the main program loop
+while (Program.IsEnabled)
+{
+    // send a byte message to the remote endpoint
+    //
+    //byte[] message = { 0x00, 0x00, 0x00, 0x00, 0x00 };
+    //TcpClient.SendMessage(message);
+    //
+    //Pause(5);
+    //
+    // send a text message to the remote endpoint
+    TcpClient.SendMessage("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n");
+    Pause(3);
+    TcpClient.Disconnect();
+    Pause(3);
+    //
+    break;
+}
+</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

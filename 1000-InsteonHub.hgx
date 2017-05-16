@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>Program.Setup(()=&gt;{
+
+  	Program.AddInputField("HubAddress", "192.168.0.?", "Insteon Hub IP Address");
+  	Program.AddInputField("HubUsername","admin", "Insteon Hub Username");
+  	Program.AddInputField("HubPassword","?", "Insteon Hub Password");
+  	Program.AddInputField("HubPort", "25105", "Insteon Hub Port");
+
+  	//
+  	// Create 5 virtual modules with the domain "InsteonHub" and with address from 1 to 5
+  	// "Light" is the type and "Generic/Light" is the widget to be used to display the virtual module.
+  	// These are for non-dimmable Lights.
+  	Program.AddVirtualModules("InsteonHub", "Light", "homegenie/generic/light", 1, 5);
+    
+    // Add the InsteonID Parameter.  
+    Program.AddFeature( "InsteonHub", "Light", "InsteonID", "Insteon ID (e.g. AA.BB.CC) or X10 ID (e.g. J12).", "text");
+});
+
+return true;
+</ScriptCondition>
+  <ScriptSource>
+// Sanity testing of the HubAddres and Password.   Also, the Hub port, Username need to be entered.
+if (Program.InputField("HubAddress").Value == "" || Program.InputField("HubAddress").Value.EndsWith("?"))
+{
+    Program.Notify("InsteonHub", "Invalid HubAddress. Please fix.");
+    Pause(2);
+} 
+if (Program.InputField("HubPassword").Value == "" || Program.InputField("HubPassword").Value.EndsWith("?"))
+{
+    Program.Notify("InsteonHub", "Invalid HubPassword. Please fix.");
+    Pause(2);
+} 
+
+// get a list of all modules in the InsteonHub Domain
+var hueModules = Modules.InDomain("InsteonHub");
+
+string hubAddress  = Program.InputField("HubAddress").Value;
+string hubUsername = Program.InputField("HubUsername").Value;
+string hubPassword = Program.InputField("HubPassword").Value;
+string hubPort     = Program.InputField("HubPort").Value;
+
+// construct the URL that is used to communicate with Hub over Http.
+string hubUrl      = "http://" + hubAddress + ":" + hubPort + "/";
+
+// Low level function for sending a command to the Hub
+Func&lt;string, bool&gt; sendHubCommand = (string cmd) =&gt;
+{
+  Net.WebService(hubUrl + cmd).WithCredentials(hubUsername, hubPassword).Call();
+  return true;
+};
+
+// Function for constructing an Insteon "DirectCommand".  
+Func&lt;string, string, string, bool&gt; SendDirectCommand = (string insteonID, string command, string level) =&gt;
+{
+  // Insteon Hub Direct commands take the following form:
+  // http://172.30.1.101:25105/3?   0262                   0EA722   0F        11          FF      =I=3
+  // HTTP Resource                + Direct Command Flag  + Device + SD Flag + CommandOp + Level + Unknown?
+
+  const string directFlag = "3?0262";  // Direct command flag 
+  const string sdFlag     = "0F";
+  const string post       = "=I=3"; 
+  
+  string cmd = directFlag + insteonID + sdFlag + command + level + post;
+  sendHubCommand(cmd);
+  return true;
+};
+
+/*
+// Function for constructing an Insteon "X10 Command".  
+Func&lt;string, string, string, string, bool&gt; SendX10Command = (string house, string unit, string cmdOp, string level) =&gt;
+{
+  // Insteon Hub X10 commands take the following form. Note that a sequence of two http commands are needed.
+  // http://172.30.1.101:25105/3?    0263               6            600         =I=3
+  // HTTP Resource                 + X10 Command Flag + House Code + Unit Code + Unknown?
+  // http://172.30.1.101:25105/3?    0263               6            280          =I=3
+  // HTTP Resource                 + X10 Command Flag + House Code + Command   + Unknown?
+  
+  return true;
+};
+*/
+
+// Web service function for handling HomeGenie HTTP commands of the form:
+// http://&lt;hg_address&gt;/api/...
+When.WebServiceCallReceived("InsteonHub", ( args ) =&gt; 
+{
+
+  // args will be of the form :  http://&lt;hg_address&gt;/api/InsteonHub/&lt;hg_module_number&gt;/&lt;hg_command&gt;
+  // exract the lightnumber and command.
+  string[] reqs = ((string)args).Split('/');
+  //string domain = reqs[0];
+  string lightnumber = reqs[1];
+  string command     = reqs[2];
+  string parameter   = ""; 
+  
+  var module = hueModules.WithAddress(lightnumber).Get();
+  if (module.HasFeature("InsteonID"))
+  {
+  string insteonID     = module.Parameter("InsteonID").Value;
+  bool   isDottedHexId = (insteonID.IndexOf(".") &gt; 0);
+
+  try
+  {
+    if (isDottedHexId)
+    {
+      // Insteon use hex brighness levels  from 0x00 (off) to (0xFF) fully on.
+      const string CMD_LEVEL_FULL = "FF";   // 100% brightness
+      const string CMD_LEVEL_OFF  = "00";   // 0% brightnes  (off)
+      
+      // Insteon Direct commands.  A full list of other commands can be founds here
+      // http://www.madreporite.com/insteon/commands.htm.
+      const string CMD_OP_ON  = "11";    // 0x11 = ON
+      const string CMD_OP_OFF = "13";    // 0x13 = OFF
+
+      // convert InsteonID from "dotted format" (AA.BB.CC) format to packed format (AABBCC)
+      string hexID      = insteonID.Remove(2,1).Remove(4,1);
+      
+      switch(command)
+      {
+        case "Control.On":
+          SendDirectCommand(hexID, CMD_OP_ON, CMD_LEVEL_FULL);
+          Program.RaiseEvent(module, "Status.Level", "1", "Insteon Light On");
+          break;
+        
+        case "Control.Off":
+          SendDirectCommand(hexID, CMD_OP_OFF, CMD_LEVEL_OFF);
+          Program.RaiseEvent(module, "Status.Level", "0", "Insteon Light Off");
+          break;
+        
+        case "Control.Toggle":
+          if (module.Parameter("Status.Level").DecimalValue == 0)
+          {
+            SendDirectCommand(hexID, CMD_OP_ON, CMD_LEVEL_FULL);
+            Program.RaiseEvent(module, "Status.Level", "1", "Insteon Light ToggleOn");
+          }
+          else
+          {
+            SendDirectCommand(hexID, CMD_OP_OFF, CMD_LEVEL_OFF);
+            Program.RaiseEvent(module, "Status.Level", "0", "Insteon Light ToggleOff");
+           }
+           break;
+        
+        case "Control.Level":
+          // convert status.Level (0.0 to 1.0) to 2-digit hexadecimal Insteon level (00 to FF).
+          string level = ((int)(double.Parse(parameter) * 255)).ToString("X2");
+          SendDirectCommand(hexID, CMD_OP_ON, level);
+          Program.RaiseEvent(module, "Status.Level", (double.Parse(parameter) / 100D).ToString(), "Insteon Light Dim");
+          break;
+      }
+    }
+    else
+    {
+      // Todo:  If InsteonID is a non-dotted foramt, we expect X10 house/unit format (e.g. J10)     
+      // Todo:  Add Insteon Hub X10 Handler code here..
+      // 
+      // SendX10Command(houseCode, unitCode, command, level)
+    }
+    return "{ 'ResponseValue' : 'OK' }";    
+  } catch (Exception e) 
+    { 
+      Program.Notify("InsteonHub ERROR!", e.Message);
+      Pause(2);                 
+    }
+    return "{ 'ResponseValue' : 'ERROR' }";
+    
+  }
+  return "{ 'ResponseValue' : 'ERROR' }";
+
+});
+
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>InsteonHub</ForDomains>
+      <ForTypes>Light</ForTypes>
+      <Property>InsteonID</Property>
+      <Description>Insteon ID (e.g. AA.BB.CC) or X10 ID (e.g. J12).</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>InsteonHub</Name>
+  <Description>Adds Insteon Hub capability to HomeGenie.  The Hub provides similar capabilities to the Insteon PLM,  but provides a network interface rather than serial/usb.    You will need to know the Hub IP address, username, and password.  You will also need to know the Insteon ID of each module you want to control.  Support for X10 is not yet supported but planned.</Description>
+  <Group>Devices and Things</Group>
+  <ActivationTime>2014-11-26T21:10:08.9327908Z</ActivationTime>
+  <TriggerTime>2014-11-26T21:10:08.9637939Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

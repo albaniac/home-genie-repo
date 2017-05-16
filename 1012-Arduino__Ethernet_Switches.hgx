@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>var moduleDomain = "HomeAutomation.ArduinoSwitches";
+Program.Setup(()=&gt;
+{
+	// register 8 virtual modules using the "switch" widget for the domain "Arduino.Switches" 
+	Program.AddVirtualModules(moduleDomain, "Switch", "homegenie/generic/switch", 1, 16);                  
+});
+// returning true will execute the "Code to Run"
+return true;
+
+</ScriptCondition>
+  <ScriptSource>//
+//Arduino ethernet relay controller
+//By: Peter Guijt
+//July 10, 2015
+//
+//
+//This is based on the original Arduino Switches code
+//
+//
+//
+//Hardware Requirements:
+//Arduino Mega 2560 or equivalent, will work with other Arduino controllers but will require different pin assignment.
+//Ethernet Shield W5100 for Arduino 2560 : http://www.amazon.com/gp/product/B00GIDHZHE?psc=1&amp;redirect=true&amp;ref_=oh_aui_detailpage_o09_s00
+//JBtek 8 Channel DC 5V Relay Module : http://www.amazon.com/JBtek-Channel-Relay-Arduino-Raspberry/dp/B00KTELP3I/ref=pd_sim_147_3?ie=UTF8&amp;refRID=08WFF4CSMEHQ2A6TQFTR
+//Patch cable 200mm male to female : http://www.amazon.com/gp/product/B00GIDHZHE?psc=1&amp;redirect=true&amp;ref_=oh_aui_detailpage_o09_s00
+//
+//
+//Arduino Ethernet Configuration
+//Make sure you change and match the IP and Port to those of your Arduino Ethernet Shield
+//    /?switch1on = switch 1 on code, append to IP and port
+//    /?switch1off = switch 1 off code, append to IP and port
+var ArduinoIP = "192.168.1.23"; 
+var ArduinoPort = "18033"; 
+var ArduinoServer = "http://"+ArduinoIP+":"+ArduinoPort; //API address for Arduino Ethernet Switches
+//
+var moduleDomain = "HomeAutomation.ArduinoSwitches";
+// 
+When.WebServiceCallReceived(moduleDomain, ( args ) =&gt; 
+{
+	string[] reqs = ((string)args).Split('/');
+	var res = "{ 'ResponseValue' : 'ERROR' }";
+	try
+	{
+		string switchid = reqs[1];
+	    string command = reqs[2];
+	    // get reference to the virtual module 
+	    var module = Modules.InDomain(moduleDomain).WithAddress(switchid).Get();
+	  	//
+	    switch(command)
+	    {
+	      	// eg. http://hg_address/api/HomeAutomation.ArduinoSwitches/1/Control.On
+	      	case "Control.On":
+	      		Net.WebService(ArduinoServer+"/?switch"+switchid+"on").GetData(); //arduino ethernet switch API "ON" trigger
+				Program.RaiseEvent(module, "Status.Level", "1", "Switch " + switchid);
+				res = "{ 'ResponseValue' : 'OK' }";
+				break;
+          	// eg. http://hg_address/api/HomeAutomation.ArduinoSwitches/1/Control.Off
+	      	case "Control.Off":
+	      		Net.WebService(ArduinoServer+"/?switch"+switchid+"off").GetData(); //arduino ethernet switch API "OFF" trigger
+				Program.RaiseEvent(module, "Status.Level", "0", "Switch " + switchid);
+				res = "{ 'ResponseValue' : 'OK' }";
+				break;
+	    }
+	} 
+	catch (Exception ex) 
+	{ 
+	    res = ex.Message + " " + ex.StackTrace;
+	}
+	// unable to process request
+	return res;
+});
+//
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors />
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1005</Address>
+  <Name>Arduino  Ethernet Switches</Name>
+  <Description>Arduino Ethernet Controlled Switches.</Description>
+  <Group>arduino</Group>
+  <Features />
+  <ActivationTime>2017-03-26T22:59:02.217798Z</ActivationTime>
+  <TriggerTime>2017-03-26T22:59:02.38832Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

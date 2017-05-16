@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>Energy Producing/Consuming Management</Name>
+  <Description>Collects and stores real-time information about
+total energy consuming and total energy producing using a Aeon HEM2 device with Clamp1 for producing and Clamp2 for consuming</Description>
+  <Group>Energy Management</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2013-12-13T20:12:58.8023197Z</ActivationTime>
+  <TriggerTime>2013-12-13T20:13:02.585536Z</TriggerTime>
+  <ScriptCondition>// A "return true;" statement at any point of this code block, will cause the program to run.
+// For manually activated program, just leave a "return false" statement here.
+//Program.Setup( () =&gt; {
+  
+//	Program.AddFeature("Siren,Light,Dimmer,Switch", "HomeGenie.SecurityAlarm", "Security Alarm");
+  	//
+
+//});
+
+
+return true;
+</ScriptCondition>
+  <ScriptSource>Program.AddFeature("Switch", "EnergyManagement.EnergyProductionFibaroWallPlugLedSignals", "Enable Energy Production Fibaro Led Signals");
+
+Program.AddInputField("Energy.InstalledMaxPowerWatts", "3300", "1. Installed Max Power Energy [Watts]");
+Program.AddInputField("Energy.ProducingFVConsumingInIdleModeWatts", "22", "1. Max Power Consuming of FV system in idle mode (during night) [Watts]");
+
+Program.Parameter("Energy.ProducingWatts").Value = "0";
+Program.Parameter("Energy.ConsumingWatts").Value = "0";
+Program.Parameter("Energy.DifferenceWatts").Value = "0";  
+Program.Parameter("Energy.FreeProducingWatts").Value = "0";
+Program.Parameter("Energy.FreeConsumingWatts").Value = Program.InputField("Energy.InstalledMaxPowerWatts").DecimalValue.ToString();
+
+while (Program.IsEnabled)
+{
+    var energymeter = Modules.WithName("Home Energy Counter").Get();
+  
+  	//Pause(5);
+  
+    energymeter.Command("MultiInstance.Get").Execute("Sensor.MultiLevel/1"); // Execute and Set are aliases 
+    energymeter.Command("MultiInstance.Get").Execute("Sensor.MultiLevel/2"); // Execute and Set are aliases 
+    
+  	Pause(5);
+  
+  	//var isarmed = (Program.WithName("Security Alarm System").Parameter("HomeGenie.SecurityArmed").Value == "1");
+	    
+    var sensor1_ProductionEnergy = energymeter.Parameter("ZWaveNode.MultiInstance.SensorMultiLevel.1");
+    var sensor2_ConsumedEnergy = energymeter.Parameter("ZWaveNode.MultiInstance.SensorMultiLevel.2");
+  
+    //if (sensor1_ProductionEnergy.DecimalValue &lt; Program.InputField("Energy.ProducingFVConsumingInIdleModeWatts").DecimalValue)
+  	if (sensor1_ProductionEnergy.DecimalValue &lt; 22D)
+      	Program.Parameter("Energy.ProducingWatts").Value = "0";
+  	else
+  		Program.Parameter("Energy.ProducingWatts").Value = (string)sensor1_ProductionEnergy.DecimalValue.ToString();
+  
+  	if (Program.Parameter("Energy.ProducingWatts").DecimalValue == 0)
+      Program.Parameter("Energy.ConsumingWatts").Value = (string)(sensor2_ConsumedEnergy.DecimalValue + sensor1_ProductionEnergy.DecimalValue).ToString();      	
+    else
+      Program.Parameter("Energy.ConsumingWatts").Value = (string)sensor2_ConsumedEnergy.DecimalValue.ToString();
+		
+  
+  	
+    Program.Parameter("Energy.DifferenceWatts").Value = (string)(Program.Parameter("Energy.ProducingWatts").DecimalValue - Program.Parameter("Energy.ConsumingWatts").DecimalValue).ToString();
+
+  
+  	if ((sensor1_ProductionEnergy.DecimalValue - sensor2_ConsumedEnergy.DecimalValue) &gt; 0)
+		Program.Parameter("Energy.FreeProducingWatts").Value = (string)(sensor1_ProductionEnergy.DecimalValue - sensor2_ConsumedEnergy.DecimalValue).ToString();
+  	else
+      	Program.Parameter("Energy.FreeProducingWatts").Value = "0";
+  
+  
+  	Program.Parameter("Energy.FreeConsumingWatts").Value = (Program.InputField("Energy.InstalledMaxPowerWatts").DecimalValue + Program.Parameter("Energy.ProducingWatts").DecimalValue - Program.Parameter("Energy.ConsumingWatts").DecimalValue).ToString();
+  
+    //Program.Notify("Energy Meter", "Production kw: " + sensor1_ProductionEnergy.DecimalValue.ToString() + " / Consumed kw: "+sensor2_ConsumedEnergy.DecimalValue.ToString());;          
+  
+    //
+    var freeloadwatts = Program.Parameter("Energy.FreeProducingWatts").DecimalValue;
+    var devcount = 0;
+    Modules.WithParameter("Meter.Watts").Each((mod)=&gt;{ 
+      if ( (mod.HasFeature("EnergyManagement.EnergyProductionFibaroWallPlugLedSignals")) &amp;&amp; (mod.IsOfDeviceType("Switch")) ) {
+        
+        if (mod.Parameter("Meter.Watts").DecimalValue &gt; 0)
+        {                 
+          	//Program.Notify("Energy Meter ", mod.Parameter("Meter.Watts").DecimalValue.ToString() );
+          
+        	freeloadwatts -= mod.Parameter("Meter.Watts").DecimalValue;            
+        	devcount++;
+          
+          	if (freeloadwatts  &gt;= 0D) {
+              mod.Command("Config.ParameterSet").Set("61/4"); //green led on fibaro wall plug switch!
+          	}
+          	else if ( (freeloadwatts &lt; 0D) &amp;&amp; (freeloadwatts &gt; -500D) ) {
+              mod.Command("Config.ParameterSet").Set("61/6"); //yellow led on fibaro wall plug switch!
+          	}
+          	else {
+              mod.Command("Config.ParameterSet").Set("61/3"); //red led on fibaro wall plug switch!
+          	}
+        }  
+        else {
+        	mod.Command("Config.ParameterSet").Set("61/9"); //spegni led
+      	}
+      }
+  
+      return false;
+    });
+  	//
+  
+  //Program.Notify("Energy Meter Free Load Watts counted:", freeloadwatts.ToString() );
+  
+  
+  
+}</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnSwitchTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>true</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Switch</ForTypes>
+      <Property>EnergyManagement.EnergyProductionFibaroWallPlugLedSignals</Property>
+      <Description>Enable Energy Production Fibaro Led Signals</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>132</Address>
+  <Name>MCU Test program</Name>
+  <Description>Example of using SerialPort helper class for communicating with serial devices.</Description>
+  <Group>Devices and Things</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2014-02-09T20:20:27.6507385Z</ActivationTime>
+  <TriggerTime>2014-02-09T20:20:27.9257385Z</TriggerTime>
+  <ScriptCondition>/* This section of code only runs once to initialize */
+/* A "return true;" statement at any point of this code block, will cause the program to run.
+ * For manually activated program, just leave a "return false" statement here. */
+
+Program.Setup(()=&gt;{  
+	/* In this case we added one module with the address "A0" in the domain "HomeAutomation.MCU"
+   domain of type "Switch" and using the "generic switch" widget for displaying it in the control 
+   panel. There are other widgets that can be used (sensor, door, window, light, dimmer etc..) 
+   Btw, a program can also create more that just one module by using AddVirtualModules. */
+  Program.AddVirtualModule("HomeAutomation.MCU", "A0", "Switch", "homegenie/generic/switch");
+  //Program.AddVirtualModules("HomeAutomation.PhilipsHue", "Dimmer", "homegenie/generic/colorlight", 1, 5); /* 5 sensors from 1 to 5 */
+});
+
+return true;</ScriptCondition>
+  <ScriptSource>var portname = "COM9"; /* Serial port on PC or on Raspberry Pi */
+
+/* Virtual module added in Setup(Trigger) section (other tab) */
+/* In this case we added one module with the address "A0" in the domain "HomeAutomation.MCU"
+ domain of type "Switch" and using the "generic switch" widget for displaying it in the control 
+ panel. There are other widgets that can be used (sensor, door, window, light, dimmer etc..) 
+ Btw, a program can also create more that just one module by using AddVirtualModules. */
+//Program.AddVirtualModule("HomeAutomation.MCU", "A0", "Switch", "homegenie/generic/switch");
+
+/* We will use this module */
+/* Now, to get a reference to your virtual module: */
+var module = Modules.InDomain("HomeAutomation.MCU").WithAddress("A0").Get();
+/* var mod1 = Modules.InDomain("HomeAutomation.X10").WithAddress("A2"); */
+
+/* Serial Reception */
+/* HandleMessageReceived(): ASCII
+ * HandleStringReceived(): UTF-8 */
+Action&lt;string&gt;
+HandleStringReceived = (string message) =&gt;
+{
+  /* This will be called every time a message is received from serial port */
+  Program.Notify("SerialPort String", message);
+	/* our MCU Protocol is very simple, 1 Byte RXed, if that is '0' turn on module, otherwise turn off */
+  if (message[0] != '0')
+  {
+    module.On();
+  }
+  else
+  {
+    module.Off();
+  }
+  /* turn the hue light 1 on (method 2, calling api directly)
+   module.Command("Control.On").Execute(); */
+};
+
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt;
+{
+  /* this will be called every time the connection status changes */
+  Program.Notify("SerialPort Status", connected ? "CONNECTED!" : "DISCONNECTED!");
+};
+
+/* As a switch, the module should also handle "Control.On" and "Control.Off" commands issued by the user 
+ from the Web user interface, or by scripting. (define Web service) */
+When.WebServiceCallReceived("HomeAutomation.MCU", ( args ) =&gt;
+    {
+      string[] reqs = ((string)args).Split('/');
+      var res = "{ 'ResponseValue' : 'ERROR' }";
+      
+      try
+      {
+        string command = reqs[2];
+        /* string moduleid = reqs[1]; *//* we wont use this since we only have one module */
+        switch(command)
+        {
+          case "Control.On":
+          	/* eg. Control URL: http://hg_address/api/HomeAutomation.MCU/A0/Control.On */
+            /* eg. here you send a message to the serial port for switch ON the device */
+            Program.RaiseEvent(module, "Status.Level", "1", "Indicator");
+            res = "{ 'ResponseValue' : 'OK' }";
+            SerialPort.SendMessage("1");
+         	 break;
+          case "Control.Off":
+          	/* eg. http://hg_address/api/HomeAutomation.MCU/A0/Control.Off */
+            /* here you send a message to the serial port for switch OFF the device */
+            Program.RaiseEvent(module, "Status.Level", "0", "Indicator");
+            res = "{ 'ResponseValue' : 'OK' }";
+            SerialPort.SendMessage("0");
+          	break;
+        }
+      }
+      catch (Exception ex)
+      {
+        res = ex.Message + " " + ex.StackTrace;
+      }
+      return res; /* unable to process request */
+    });
+
+/* open the serial port channel and register handlers */
+SerialPort.WithName( portname )
+	.OnStatusChanged( HandleStatusChanged )
+	/* .OnMessageReceived( HandleMessageReceived ) */ /* For UTF-8  */
+	.OnStringReceived( HandleStringReceived )
+	.Connect( 9600 ); /* change baud rate if needed */
+</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnSwitchTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

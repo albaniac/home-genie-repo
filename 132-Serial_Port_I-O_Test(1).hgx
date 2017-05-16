@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>132</Address>
+  <Name>Serial Port I/O Test</Name>
+  <Description>Example of using SerialPort helper class for communicating with serial devices.</Description>
+  <Group>Devices and Things</Group>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+  <ScriptCondition>// A "return true;" statement at any point of this code block, will cause the program to run.
+// For manually activated program, just leave a "return false" statement here.
+
+return false;
+</ScriptCondition>
+  <ScriptSource>var portname = "/dev/ttyUSB0";
+
+  
+Action&lt;string&gt; 
+HandleStringReceived = (string message) =&gt; {
+  
+  	// this will be called every time a message is received from serial port
+	Program.Notify("SerialPort String", message);
+  
+};
+
+Action&lt;byte[]&gt; 
+HandleMessageReceived = (byte[] message) =&gt; {
+  
+  	// this will be called every time a message is received from serial port
+	Program.Notify("SerialPort Bytes", BitConverter.ToString(message));
+  
+};
+
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt; {
+  	
+  	// this will be called every time the connection status changes
+  	Program.Notify("SerialPort Status", connected ? "CONNECTED!" : "DISCONNECTED!");
+  
+};
+
+// open the serial port channel and register handlers
+SerialPort
+  	.WithName( portname )
+  	.OnStatusChanged( HandleStatusChanged )
+  	.OnMessageReceived( HandleMessageReceived )
+  	.OnStringReceived( HandleStringReceived )
+  	.Connect( 9600 ); // change baud rate if needed
+
+while (Program.IsEnabled)
+{
+  // send a test message through serial port every 10 seconds
+  //
+  byte[] message = { 0x00, 0x00, 0x00, 0x00, 0x00 };
+  SerialPort.SendMessage(message);
+  //
+  Pause(5);
+  SerialPort.SendMessage("Hello Things!");
+  //
+  Pause(10);
+}
+
+</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnSwitchTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+</ProgramBlock>

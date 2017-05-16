@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>Program.AddOption("APIkey", "?", "Prowl API Key", "text");
+Program.AddFeature("", "Switch,Dimmer,Light,Siren,Sensor,Program,DoorWindow", "Push.Device.Enable", "Enabble Push Notifications Device", "checkbox");
+Program.Run();
+</ScriptCondition>
+  <ScriptSource>string APIkey = Program.Option("APIkey").Value;
+var serviceurl = "http://api.prowlapp.com/publicapi/add?apikey=" + APIkey;
+var statevalue = "OFF";
+
+// We want to do further processing whenever a module changes 
+When.ModuleParameterChanged( (module, property) =&gt; {
+
+  if (module.HasFeature("Push.Device.Enable"))
+  {
+    var serviceparams = "&amp;application=" + module.Instance.Name;
+    serviceparams += "&amp;event=" +  property.Name;
+    if(property.Value != "0")
+    	statevalue = "ON";
+    else
+       	statevalue = "OFF";
+    serviceparams += "&amp;description=" + statevalue;
+    //
+    Net.WebService(serviceurl + serviceparams).Call();
+  }
+ return true; 
+
+});
+
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors>Program update is required.</ScriptErrors>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1027</Address>
+  <Name>Prowl iOS Push Notification</Name>
+  <Description>https://www.prowlapp.com</Description>
+  <Group>Messaging and Social</Group>
+  <Features>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Switch,Dimmer,Light,Siren,Sensor,Program,DoorWindow</ForTypes>
+      <Property>Push.Device.Enable</Property>
+      <Description>Enabble Push Notifications Device</Description>
+    </ProgramFeature>
+  </Features>
+  <ActivationTime xsi:nil="true" />
+  <TriggerTime>2016-01-29T22:19:11.120167Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

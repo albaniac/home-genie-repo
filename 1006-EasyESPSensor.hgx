@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// set the widget that will display this program data (temperature,humidity).
+Program.UseWidget("homegenie/generic/sensor");
+Program.AddOption("UpdateInterval", "15", "Update Interval (seconds)", "text");
+Program.Run();
+</ScriptCondition>
+  <ScriptSource>var ESPAddress  = "10.13.10.110";  //ip address of EasyESP module
+var Task1Nr = 6;   // number of Temperature task (they are starting from 0) in ESP Easy. Count them in http://YourEasyEspIP/json 
+var Task1ParameterName  = "Temperature"; // name of temperature parameter in task numer as above 
+var Task2Nr = 5;   // number of Humidity task (they are starting from 0) in ESP Easy. Count them in http://YourEasyEspIP/json 
+var Task2ParameterName  = "Humidity"; // name of Humidity parameter in task numer as above 
+
+
+//-----------------
+var Task = "TaskName";  // task name is returned in this parameter from ESPEasy
+
+// it makes program to respond to webservices calls:
+// - http://&lt;hg_address&gt;/api/Components.ESP1/0/Sensor.Temperature
+When.WebServiceCallReceived("Components.ESP1/0/Sensor.Temperature", ( args ) =&gt; {
+  return "{ 'ResponseValue' : '" + Program.Parameter("Sensor.Temperature").Value + "' }";
+});
+// - http://&lt;hg_address&gt;/api/Components.ESP1/0/Sensor.Humidity
+When.WebServiceCallReceived("Components.ESP1/0/Sensor.Humidity", ( args ) =&gt; {
+  return "{ 'ResponseValue' : '" + Program.Parameter("Sensor.Humidity").Value + "' }";
+});
+
+while (Program.IsEnabled)
+{
+  	try
+    {
+       string webserviceurl = "http://"+ ESPAddress +"/json";
+       var jsonData = Net.WebService(webserviceurl).GetData();
+      
+       var Task1Value =  jsonData["Sensors"][Task1Nr][Task1ParameterName].ToString();
+       var Task1Name = jsonData["Sensors"][Task1Nr][Task].ToString();
+       Program.Notify("ESP " + ESPAddress,   Task1Name + " " + Task1Name );
+       
+       var Task2Value =  jsonData["Sensors"][Task2Nr][Task2ParameterName].ToString();
+       var Task2Name = jsonData["Sensors"][Task2Nr][Task].ToString();
+       Program.Notify("ESP " + ESPAddress,   Task2Name + " " + Task2Name );
+       
+      Program.RaiseEvent("Sensor.Temperature", Task1Value, "ESP " + ESPAddress + " " + Task2Name);
+      Program.RaiseEvent("Sensor.Humidity", Task2Value, "ESP " + ESPAddress + " " + Task1Name);
+      
+    } 
+    catch (Exception e) 
+    {
+      Program.Notify("ESP ERROR!", "Unable to get data from "+ ESPAddress + "&lt;br&gt; " + e.Message);
+      Console.WriteLine( e.Message );
+      // when ESP is not available - set values err
+      Program.RaiseEvent("Sensor.Temperature", "err", "ESP " + ESPAddress);
+      Program.RaiseEvent("Sensor.Humidity", "err", "ESP " + ESPAddress);
+      Pause(5000);
+    }
+ 
+  var pause = Program.Option("UpdateInterval").DecimalValue;
+  if (pause == 0) pause = 15; // default pause is 15 
+  Pause(pause);
+}
+</ScriptSource>
+  <ScriptErrors />
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1006</Address>
+  <Name>EasyESPSensor</Name>
+  <Description>Read temperature and humidity from ESPEasy firmware. You have to set IP address, number of task and parameter name in code.</Description>
+  <Group>Piotr</Group>
+  <Features />
+  <ActivationTime>2017-01-15T16:52:25.088803Z</ActivationTime>
+  <TriggerTime>2017-01-15T16:52:26.206038Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

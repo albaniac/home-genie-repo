@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// Put your trigger code logic here.
+// To execute the Code To Run,
+Program.AddInputField("Port", "/dev/ttyUSB1", "Serial Port used by CM17A Firecracker Transmitter");
+Program.AddInputField("House", "a", "a-p as set on the X10 module");
+
+// add 4 virtual modules - change the "4"  to up to "16" if so desired
+Program.AddVirtualModules("HomeAutomation.CM17A", "Switch","homegenie/generic/switch", 1, 4);
+
+// use a 'return true' for program to be running in background
+return true;
+</ScriptCondition>
+  <ScriptSource>// CSharp Automation Program Plugin
+// Call firecracker.py to turn X10 lights/switches on/off
+// firecracker.py usage:  python firecracker.py house unit action [port]
+//   house  = [a,p]   unit   = [0,16]   action = (ON, OFF, BRT, DIM)   port   = serial port (e.g. /dev/ttyUSB1)
+
+string house = Program.InputField("House").Value;
+string port = Program.InputField("Port").Value;
+
+// Function turnOnOff("ON")
+Func&lt;string, string, bool&gt; turnOnOff = (unit, action)=&gt; {
+  try
+     {
+    	string command = "/home/pi/firecracker.py " + house + " " + unit + " " + action + " " + port;
+    	System.Diagnostics.ProcessStartInfo procStartInfo =
+        	new System.Diagnostics.ProcessStartInfo("python", command);
+
+    	procStartInfo.RedirectStandardOutput = true;
+    	procStartInfo.UseShellExecute = false;    	
+    	procStartInfo.CreateNoWindow = true;	// Do not create the black window.
+
+    	System.Diagnostics.Process proc = new System.Diagnostics.Process();
+    	proc.StartInfo = procStartInfo;
+    	proc.Start();
+    	
+    	string result = proc.StandardOutput.ReadToEnd();	// Get the output into a string
+    
+    	Program.Notify("CM17A", command + ", " + result);
+	}
+    catch
+    {
+        Program.Notify("CM17A_ERROR","Exception caught");	// Log the exception      
+    }
+  
+  	return true;
+};
+
+var cm17aModules = Modules.InDomain("HomeAutomation.CM17A");
+  
+// web service call - used if user implements a control switch
+// when the switch ON is pressed, a Push Notification is sent
+When.WebServiceCallReceived("HomeAutomation.CM17A", ( args ) =&gt;
+{
+  	string[] reqs = ((string)args).Split('/');
+  	//string domain = reqs[0];
+  	string unitNumber = reqs[1];
+	string command = reqs[2];		// Control.On or Control.Off
+  
+  	var module = cm17aModules.WithAddress(unitNumber).Get();
+  
+  	switch (command)
+    {
+      case "Control.On":
+      	turnOnOff(unitNumber, "ON");
+      	Program.RaiseEvent(module, "Status.Level", "1", "CM17A Module");
+      	break;
+      case "Control.Off":
+      	turnOnOff(unitNumber, "OFF");
+      	Program.RaiseEvent(module, "Status.Level", "0", "CM17A Module");
+      	break;
+    }
+  
+  	return true;
+});
+
+// run/loop this program in the background
+Program.GoBackground();
+
+</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1010</Address>
+  <Name>X10 rPi FireCracker</Name>
+  <Description>Turn lights/switches on/off from RaspberryPi using CM17A Firecracker X10 transmitter using external program firecracker.py</Description>
+  <Group>Raspberry Pi</Group>
+  <ActivationTime>2014-12-10T04:37:37.858242Z</ActivationTime>
+  <TriggerTime>2014-12-10T04:37:39.031934Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

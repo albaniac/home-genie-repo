@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>Sunrise/Sunset Lights Control - ADVANCED</Name>
+  <Description>Turn on/off a device when the sun set/rise.  Updated to include on/off for sunrise and sunset as well as weekday and weekend control.</Description>
+  <Group>test</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2014-01-18T16:36:16.979663Z</ActivationTime>
+  <TriggerTime>2014-01-18T16:40:23.539309Z</TriggerTime>
+  <ScriptCondition>// this Setup delegate will be executed once, when program become active
+Program.Setup(()=&gt;
+{
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOn", "Toggle On when the Sun sets");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOff", "Toggle Off when the Sun sets");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOn", "Toggle On when the Sun rises");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOff", "Toggle Off when the Sun rises");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOnWeekday", "Toggle On when the Sun sets - Weekday");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOffWeekday", "Toggle Off when the Sun sets - Weekday");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOnWeekday", "Toggle On when the Sun rises - Weekday");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOffWeekday", "Toggle Off when the Sun rises - Weekday");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOnWeekend", "Toggle On when the Sun sets - Weekend");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunSetOffWeekend", "Toggle Off when the Sun sets - Weekend");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOnWeekend", "Toggle On when the Sun rises - Weekend");
+Program.AddFeature("Light,Dimmer,Switch", "HomeGenie.SunRiseOffWeekend", "Toggle Off when the Sun rises - Weekend");
+});
+//
+Pause(60); // pause a minute before next check
+//
+return true; // execute the "Code To Run"</ScriptCondition>
+  <ScriptSource>string sunrise = Program.WithName("Weather Underground").Parameter("Astronomy.Sunrise").Value;
+string sunset = Program.WithName("Weather Underground").Parameter("Astronomy.Sunset").Value;
+
+if (DateTime.Now.ToString("HH:mm") == sunrise)
+{
+  if (DateTime.Now.DayOfWeek.ToString() == "Saturday" || DateTime.Now.DayOfWeek.ToString() == "Sunday")
+  {
+    Modules.WithFeature("HomeGenie.SunRiseOffWeekend").Off();
+    Modules.WithFeature("HomeGenie.SunRiseOnWeekend").On();
+  }
+  else
+  {
+    Modules.WithFeature("HomeGenie.SunRiseOffWeekday").Off();
+    Modules.WithFeature("HomeGenie.SunRiseOnWeekday").On();
+  }
+  Modules.WithFeature("HomeGenie.SunRiseOff").Off();
+  Modules.WithFeature("HomeGenie.SunRiseOn").On();
+}
+else if (DateTime.Now.ToString("HH:mm") == sunset)
+{
+  if (DateTime.Now.DayOfWeek.ToString() == "Saturday" || DateTime.Now.DayOfWeek.ToString() == "Sunday")
+  {
+    Modules.WithFeature("HomeGenie.SunSetOffWeekend").Off();
+    Modules.WithFeature("HomeGenie.SunSetOnWeekend").On();
+  }
+  else
+  {
+    Modules.WithFeature("HomeGenie.SunSetOffWeekday").Off();
+    Modules.WithFeature("HomeGenie.SunSetOnWeekday").On();
+  }
+  Modules.WithFeature("HomeGenie.SunSetOff").Off();
+  Modules.WithFeature("HomeGenie.SunSetOn").On();
+}</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOn</Property>
+      <Description>Toggle On when the Sun sets</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOff</Property>
+      <Description>Toggle Off when the Sun sets</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOn</Property>
+      <Description>Toggle On when the Sun rises</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOff</Property>
+      <Description>Toggle Off when the Sun rises</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOnWeekday</Property>
+      <Description>Toggle On when the Sun sets - Weekday</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOffWeekday</Property>
+      <Description>Toggle Off when the Sun sets - Weekday</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOnWeekday</Property>
+      <Description>Toggle On when the Sun rises - Weekday</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOffWeekday</Property>
+      <Description>Toggle Off when the Sun rises - Weekday</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOnWeekend</Property>
+      <Description>Toggle On when the Sun sets - Weekend</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunSetOffWeekend</Property>
+      <Description>Toggle Off when the Sun sets - Weekend</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOnWeekend</Property>
+      <Description>Toggle On when the Sun rises - Weekend</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Light,Dimmer,Switch</ForTypes>
+      <Property>HomeGenie.SunRiseOffWeekend</Property>
+      <Description>Toggle Off when the Sun rises - Weekend</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

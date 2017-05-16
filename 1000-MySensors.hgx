@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>"""
+Put your trigger code logic here.
+Call 'hg.SetConditionTrue()' when you want
+the 'Code To Run' to be executed.
+"""
+
+def setup():
+    hg.Program.AddInputField("portname", "/dev/ttyUSB0", "USB Port connected to the MySensors Serial GW")
+    hg.Program.AddInputField("units", "SI", "M for mtetric and SI for Imperial")
+    hg.Program.AddInputField("nextId", "1", "Manually set the next sensor ID to be used")
+    hg.Program.AddInputField("debug", "true", "Eanable or disable debug true|false")
+    hg.Program.AddInputField("logfile", "/tmp/mysensors.log", "location of debug file")
+    return
+
+hg.Program.Setup(setup)   
+hg.SetConditionTrue()</ScriptCondition>
+  <ScriptSource>"""
+This app implements MySensors in HG http://mysensors.org/
+The only supported GW at this time is the serial GW v1.4 http://mysensors.org/build/serial_api
+"""
+import sys
+sys.path.append("/usr/lib/python2.7/")
+sys.path.append("/usr/lib/python2.7/dist-packages/")
+import serial
+import threading
+import Queue
+import logging
+import time
+
+logfile = hg.Program.InputField("logfile").Value
+units = hg.Program.InputField("units").Value
+portname = hg.Program.InputField("portname").Value
+debug = hg.Program.InputField("debug").Value
+moduleDomain = "HomeAutomation.MySensors"
+
+if debug.lower() == "false":
+    debug = False
+
+if debug: logging.basicConfig(filename=logfile, level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s : %(message)s")
+
+msgType = {
+"0": "PRESENTATION", #Sent by a node when they present attached sensors. This is usually done in setup() at startup.
+"1": "SET",  #This message is sent from or to a sensor when a sensor value should be updated
+"2": "REQ", #Requests a variable value (usually from an actuator destined for controller).
+"3": "INTERNAL", #This is a special internal message. See table below for the details
+"4": "STREAM"   #Used for OTA firmware updates 
+}
+
+msgPresnt = {
+"0": "S_DOOR",	#	Door and window sensors
+"1": "S_MOTION",	#	Motion sensors
+"2": "S_SMOKE",	#	Smoke sensor
+"3": "S_LIGHT",	#	Light Actuator (on/off)
+"4": "S_DIMMER",	#	Dimmable device of some kind
+"5": "S_COVER",	#	Window covers or shades
+"6": "S_TEMP",	#	Temperature sensor
+"7": "S_HUM",	#	Humidity sensor
+"8": "S_BARO",	#	Barometer sensor (Pressure)
+"9": "S_WIND",	#	Wind sensor
+"10": "S_RAIN",	#	Rain sensor
+"11": "S_UV",	#	UV sensor
+"12": "S_WEIGHT",	#	Weight sensor for scales etc.
+"13": "S_POWER",	#	Power measuring device, like power meters
+"14": "S_HEATER",	#	Heater device
+"15": "S_DISTANCE",	#	Distance sensor
+"16": "S_LIGHT_LEVEL",	#	Light sensor
+"17": "S_ARDUINO_NODE",	#	Arduino node device
+"18": "S_ARDUINO_RELAY",	#	Arduino repeating node device
+"19": "S_LOCK",	#	Lock device
+"20": "S_IR",	#	Ir sender/receiver device
+"21": "S_WATER",	#	Water meter
+"22": "S_AIR_QUALITY",	#	Air quality sensor e.g. MQ-2
+"23": "S_CUSTOM",	#	Use this for custom sensors where no other fits.
+"24": "S_DUST",	#	Dust level sensor
+"25": "S_SCENE_CONTROLLER"	#Scene controller device
+}
+
+msgSet = {
+"0": "V_TEMP",    #V_TEMP	0	Temperature
+"1": "V_HUM",    #V_HUM	1	Humidity
+"2": "V_LIGHT",    #V_LIGHT	2	Light status. 0=off 1=on
+"3": "V_DIMMER",    #V_DIMMER	3	Dimmer value. 0-100%
+"4": "V_PRESSURE",    #V_PRESSURE	4	Atmospheric Pressure
+"5": "V_FORECAST",    #V_FORECAST	5	Whether forecast. One of "stable", "sunny", "cloudy", "unstable", "thunderstorm" or "unknown"
+"6": "V_RAIN",    #V_RAIN	6	Amount of rain
+"7": "V_RAINRATE",    #V_RAINRATE	7	Rate of rain
+"8": "V_WIND",    #V_WIND	8	Windspeed
+"9": "V_GUST",    #V_GUST	9	Gust
+"10": "V_DIRECTION",    #V_DIRECTION	10	Wind direction
+"11": "V_UV",    #V_UV	11	UV light level
+"12": "V_WEIGHT",    #V_WEIGHT	12	Weight (for scales etc)
+"13": "V_DISTANCE",    #V_DISTANCE	13	Distance
+"14": "V_IMPEDANCE",    #V_IMPEDANCE	14	Impedance value
+"15": "V_ARMED",    #V_ARMED	15	Armed status of a security sensor. 1=Armed, 0=Bypassed
+"16": "V_TRIPPED",    #V_TRIPPED	16	Tripped status of a security sensor. 1=Tripped, 0=Untripped
+"17": "V_WATT",    #V_WATT	17	Watt value for power meters
+"18": "V_KWH",    #V_KWH	18	Accumulated number of KWH for a power meter
+"19": "V_SCENE_ON",    #V_SCENE_ON	19	Turn on a scene
+"20": "V_SCENE_OFF",    #V_SCENE_OFF	20	Turn of a scene
+"21": "V_HEATER",    #V_HEATER	21	Mode of header. One of "Off", "HeatOn", "CoolOn", or "AutoChangeOver"
+"22": "V_HEATER_SW",    #V_HEATER_SW	22	Heater switch power. 1=On, 0=Off
+"23": "V_LIGHT_LEVEL",    #V_LIGHT_LEVEL	23	Light level. 0-100%
+"24": "V_VAR1",    #V_VAR1	24	Custom value
+"25": "V_VAR2",    #V_VAR2	25	Custom value
+"26": "V_VAR3",    #V_VAR3	26	Custom value
+"27": "V_VAR4",    #V_VAR4	27	Custom value
+"28": "V_VAR5",    #V_VAR5	28	Custom value
+"29": "V_UP",    #V_UP	29	Window covering. Up.
+"30": "V_DOWN",    #V_DOWN	30	Window covering. Down.
+"31": "V_STOP",    #V_STOP	31	Window covering. Stop.
+"32": "V_IR_SEND",    #V_IR_SEND	32	Send out an IR-command
+"33": "V_IR_RECEIVE",    #V_IR_RECEIVE	33	This message contains a received IR-command
+"34": "V_FLOW",    #V_FLOW	34	Flow of water (in meter)
+"35": "V_VOLUME",    #V_VOLUME	35	Water volume
+"36": "V_LOCK_STATUS",    #V_LOCK_STATUS	36	Set or get lock status. 1=Locked, 0=Unlocked
+"37": "V_DUST_LEVEL",    #V_DUST_LEVEL	37	Dust level
+"38": "V_VOLTAGE",    #V_VOLTAGE	38	Voltage level
+"39": "V_CURRENT",    #_CURRENT	39	Current level
+}
+
+msgInt = {
+"0": "I_BATTERY_LEVEL",	#	Use this to report the battery level (in percent 0-100).
+"1": "I_TIME",	#	Sensors can request the current time from the Controller using this message. The time will be reported as the seconds since 1970
+"2": "I_VERSION",	#	Sensors report their library version at startup using this message type
+"3": "I_ID_REQUEST",	#	Use this to request a unique node id from the controller.
+"4": "I_ID_RESPONSE",	#	Id response back to sensor. Payload contains sensor id.
+"5": "I_INCLUSION_MODE",	#	Start/stop inclusion mode of the Controller (1=start, 0=stop).
+"6": "I_CONFIG",	#	Config request from node. Reply with (M)etric or (I)mperal back to sensor.
+"7": "I_FIND_PARENT",	#	When a sensor starts up, it broadcast a search request to all neighbor nodes. They reply with a I_FIND_PARENT_RESPONSE.
+"8": "I_FIND_PARENT_RESPONSE",	#	Reply message type to I_FIND_PARENT request.
+"9": "I_LOG_MESSAGE",	#	Sent by the gateway to the Controller to trace-log a message
+"10": "I_CHILDREN",	#	A message that can be used to transfer child sensors (from EEPROM routing table) of a repeating node.
+"11": "I_SKETCH_NAME",	#	Optional sketch name that can be used to identify sensor in the Controller GUI
+"12": "I_SKETCH_VERSION",	#	Optional sketch version that can be reported to keep track of the version of sensor in the Controller GUI.
+"13": "I_REBOOT",	#	Used by OTA firmware updates. Request for node to reboot.
+"14": "I_GATEWAY_READY"	#	Send by gateway to controller when startup is complete.
+}
+
+hgRaiseEvent = {
+"V_TEMP": "Sensor.Temperature",    #V_TEMP	0	Temperature
+"V_HUM": "Sensor.Humidity",    #V_HUM	1	Humidity
+"V_LIGHT": "Sensor.Generic",    #V_LIGHT	2	Light status. 0=off 1=on
+"V_DIMMER": "",    #V_DIMMER	3	Dimmer value. 0-100%
+"V_PRESSURE": "",    #V_PRESSURE	4	Atmospheric Pressure
+"V_FORECAST": "",    #V_FORECAST	5	Whether forecast. One of "stable": "", "sunny": "", "cloudy": "", "unstable": "", "thunderstorm" or "unknown"
+"V_RAIN": "",    #V_RAIN	6	Amount of rain
+"V_RAINRATE": "",    #V_RAINRATE	7	Rate of rain
+"V_WIND": "",    #V_WIND	8	Windspeed
+"V_GUST": "",    #V_GUST	9	Gust
+"V_DIRECTION": "",    #V_DIRECTION	10	Wind direction
+"V_UV": "",    #V_UV	11	UV light level
+"V_WEIGHT": "",    #V_WEIGHT	12	Weight (for scales etc)
+"V_DISTANCE": "Sensor.Distance",    #V_DISTANCE	13	Distance
+"V_IMPEDANCE": "",    #V_IMPEDANCE	14	Impedance value
+"V_ARMED": "",    #V_ARMED	15	Armed status of a security sensor. 1=Armed: "", 0=Bypassed
+"V_TRIPPED": "Sensor.MotionDetect",    #V_TRIPPED	16	Tripped status of a security sensor. 1=Tripped: "", 0=Untripped
+"V_WATT": "",    #V_WATT	17	Watt value for power meters
+"V_KWH": "",    #V_KWH	18	Accumulated number of KWH for a power meter
+"V_SCENE_ON": "",    #V_SCENE_ON	19	Turn on a scene
+"V_SCENE_OFF": "",    #V_SCENE_OFF	20	Turn of a scene
+"V_HEATER": "",    #V_HEATER	21	Mode of header. One of "Off": "", "HeatOn": "", "CoolOn": "", or "AutoChangeOver"
+"V_HEATER_SW": "",    #V_HEATER_SW	22	Heater switch power. 1=On: "", 0=Off
+"V_LIGHT_LEVEL": "",    #V_LIGHT_LEVEL	23	Light level. 0-100%
+"V_VAR1": "",    #V_VAR1	24	Custom value
+"V_VAR2": "",    #V_VAR2	25	Custom value
+"V_VAR3": "",    #V_VAR3	26	Custom value
+"V_VAR4": "",    #V_VAR4	27	Custom value
+"V_VAR5": "",    #V_VAR5	28	Custom value
+"V_UP": "",    #V_UP	29	Window covering. Up.
+"V_DOWN": "",    #V_DOWN	30	Window covering. Down.
+"V_STOP": "",    #V_STOP	31	Window covering. Stop.
+"V_IR_SEND": "",    #V_IR_SEND	32	Send out an IR-command
+"V_IR_RECEIVE": "",    #V_IR_RECEIVE	33	This message contains a received IR-command
+"V_FLOW": "",    #V_FLOW	34	Flow of water (in meter)
+"V_VOLUME": "",    #V_VOLUME	35	Water volume
+"V_LOCK_STATUS": "",    #V_LOCK_STATUS	36	Set or get lock status. 1=Locked: "", 0=Unlocked
+"V_DUST_LEVEL": "",    #V_DUST_LEVEL	37	Dust level
+"V_VOLTAGE": "",    #V_VOLTAGE	38	Voltage level
+"V_CURRENT": "",    #_CURRENT	39	Current level
+}
+
+hgModule = {
+"S_TEMP": "Sensor.Temperature",    #V_TEMP	Temperature
+"S_HUM": "Sensor.Humidity", #V_HUM	Humidity
+"S_LIGHT": "Sensor.Generic",    #V_LIGHT	Light status. 0=off 1=on
+"S_DISTANCE": "Sensor.Distance",	#	Distance sensor
+"S_MOTION": "Sensor.MotionDetect",  # Motion sensor
+}
+
+hgType = {
+"S_TEMP": "Sensor",    #V_TEMP	Temperature
+"S_HUM": "Sensor",    #V_HUM	Humidity
+"S_LIGHT": "Switch",    #V_LIGHT	Light status. 0=off 1=on
+"S_MOTION": "Sensor",   # Motion sensor
+"S_DISTANCE": "Sensor",	#	Distance sensor
+}
+
+hgWidget = {
+"S_DOOR": "homegenie/generic/doorwindow",	#	Door and window sensors
+"S_MOTION": "homegenie/generic/sensor",	#	Motion sensors
+"S_SMOKE": "",	#	Smoke sensor
+"S_LIGHT": "homegenie/generic/light",	#	Light Actuator (on/off)
+"S_DIMMER": "homegenie/generic/dimmer",	#	Dimmable device of some kind
+"S_COVER": "homegenie/generic/shutter",	#	Window covers or shades
+"S_TEMP": "homegenie/generic/sensor",	#	Temperature sensor
+"S_HUM": "homegenie/generic/sensor",	#	Humidity sensor
+"S_BARO": "",	#	Barometer sensor (Pressure)
+"S_WIND": "",	#	Wind sensor
+"S_RAIN": "",	#	Rain sensor
+"S_UV": "",	#	UV sensor
+"S_WEIGHT": "",	#	Weight sensor for scales etc.
+"S_POWER": "",	#	Power measuring device: "", like power meters
+"S_HEATER": "",	#	Heater device
+"S_DISTANCE": "homegenie/generic/sensor",	#	Distance sensor
+"S_LIGHT_LEVEL": "",	#	Light sensor
+"S_ARDUINO_NODE": "",	#	Arduino node device
+"S_ARDUINO_RELAY": "",	#	Arduino repeating node device
+"S_LOCK": "",	#	Lock device
+"S_IR": "",	#	Ir sender/receiver device
+"S_WATER": "",	#	Water meter
+"S_AIR_QUALITY": "",	#	Air quality sensor e.g. MQ-2
+"S_CUSTOM": "",	#	Use this for custom sensors where no other fits.
+"S_DUST": "",	#	Dust level sensor
+"S_SCENE_CONTROLLER": "",	#Scene controller device
+}
+
+def webRecv(command):
+    res = "{ 'ResponseValue' : 'ERROR' }"
+    command = command.split("/")
+    curId = command[1]+"/"+command[2]
+    module = hg.Modules.InDomain(moduleDomain).WithAddress(curId).Get();
+    if command[3] == "Control.Off":
+        sendStr = "%s;%s;1;1;2;0\n" % (command[1], command[2])
+        #hg.Program.RaiseEvent(module, "Status.Level", "0", "Switch " + curId)
+        if debug: logging.info("sending %s to %s/%s" % (command[3], command[1], command[2]))
+        queue_write.put(sendStr)
+        res = "{ 'ResponseValue' : 'OK' }"
+    if command[3] == "Control.On":
+        sendStr = "%s;%s;1;1;2;1\n" % (command[1], command[2])
+        #hg.Program.RaiseEvent(module, "Status.Level", "1", "Switch " + curId)
+        if debug: logging.info("sending %s to %s/%s" % (command[3], command[1], command[2]))
+        queue_write.put(sendStr)
+        res = "{ 'ResponseValue' : 'OK' }"
+    return res
+
+def sensorPres(d):
+    """Handel sensor presentation"""
+    idTest = False
+    try:
+        int(d["nodeId"])
+        int(d["childId"])
+        int(d['msgST'])
+        int(d['msgT'])
+        idTest = True
+    except:
+        return None
+    if idTest:
+        try:
+            newId = "%s/%s" % (d["nodeId"], d["childId"])
+            deviceStr = """%s; %s; %s; %s""" % (moduleDomain, newId, hgType[msgPresnt[d["msgST"]]], hgWidget[msgPresnt[d["msgST"]]])
+            hg.Program.Notify("MySensors", "Adding Device " + newId +" "+ deviceStr)
+            #if debug: logging.info("add sensor string: %s" % (deviceStr))
+            hg.Program.AddVirtualModule(moduleDomain, newId, hgType[msgPresnt[d["msgST"]]], hgWidget[msgPresnt[d["msgST"]]])
+            time.sleep(1)
+            m = hg.Modules.InDomain(moduleDomain).WithAddress(newId).Get()
+            try:
+                m.Parameter(hgModule[msgPresnt[d["msgST"]]]).Value = ""
+            except Exception, e:
+                pass
+            hg.Program.Notify("MySensors", "Adding virtual module address " + newId + " type " + hgType[msgPresnt[d["msgST"]]] + " Widget " + hgWidget[msgPresnt[d["msgST"]]] )
+            if debug: logging.info("new device address: %s type: %s added" % (newId, hgType[msgPresnt[d["msgST"]]]))
+        except Exception, e:
+            if debug: logging.info("DEV ADD FAILED %s" % (e))
+            pass
+
+def process_serial(mymessage, write_queue):
+    """this will be called every time a message is received from serial port"""
+    sensor = {}
+    l = mymessage.rstrip()
+    #if debug: logging.info("raw serial string: %s" % (l))
+    line = l.split(";")
+    if (len(line) &gt;5):
+        sensor['nodeId'] = line[0]
+        sensor['childId'] = line[1]
+        sensor['msgT'] = line[2]
+        sensor['ack'] = line[3]
+        sensor['msgST'] = line[4]
+        sensor['payload'] = line[5]
+        curId = sensor['nodeId']+"/"+sensor['childId']
+        if (msgType[sensor['msgT']] == "PRESENTATION"):
+            sType = msgPresnt[sensor['msgST']]
+            if (sType != "S_ARDUINO_NODE"):
+                if debug: logging.info("received pres: %s;%s;%s;%s;%s;%s" % (sensor['nodeId'], sensor['childId'], msgType[sensor['msgT']], sensor['ack'], sType, sensor['payload']))
+                sensorPres(sensor)
+        if (msgType[sensor['msgT']] == "INTERNAL"):
+            sType = msgInt[sensor['msgST']]
+            if debug: logging.info("received int: %s;%s;%s;%s;%s;%s" % (sensor['nodeId'], sensor['childId'], msgType[sensor['msgT']], sensor['ack'], sType, sensor['payload']))
+            if (sType == "I_ID_REQUEST"):
+                mo = hg.Modules.InDomain("HomeAutomation.HomeGenie.Automation").WithName("MySensors").Get()
+                newId = mo.Parameter("nextId").Value
+                if newId == "":
+                    newId = "1"
+                    mo.Parameter("nextId").Value = newId
+                IdStr = "255;255;3;0;4;%s\n" % (newId)
+                write_queue.put(IdStr)
+                if debug: logging.info("sending ID response, id=%s" % (IdStr.rstrip()))
+            if (sType == "I_TIME"):
+                timeStr = "%s;255;%s;0;1;%s\n" % (sensor['nodeId'], line[2], int(time.time()))
+                if debug: logging.info("sending time %s" % (timeStr.rstrip()))
+                write_queue.put(timeStr)
+            if (sType =="I_CONFIG"):
+                unitStr = "%s;255;%s;0;6;%s\n" % (sensor['nodeId'], line[2], units)
+                if debug: logging.info("sending units %s" % ( unitStr.rstrip()))
+                write_queue.put(unitStr)
+        module = hg.Modules.InDomain(moduleDomain).WithAddress(curId).Get();
+        #if module == None or not module or module is None:
+        #    if debug: logging.info("no module found")
+        #    return None
+        if (msgType[sensor['msgT']] == "SET"):
+            sType = msgSet[sensor['msgST']]
+            if debug: logging.info("received set: %s;%s;%s;%s;%s;%s" % (sensor['nodeId'], sensor['childId'], msgType[sensor['msgT']], sensor['ack'], sType, sensor['payload']))
+            try:
+                #if debug: logging.info("changed for %s" % (sType))
+                if sType == "V_TEMP":
+                    if debug: logging.info([curId, hgRaiseEvent[sType], sensor['payload'], 'degC' if units=='M' else 'degf'])
+                    str = "Event raised for: %s %s %s" % (curId, hgRaiseEvent[sType], sensor['payload'])
+                    hg.Program.Notify("MySensors", str)
+                    module.Parameter(hgRaiseEvent[sType]).Value = sensor['payload']
+                    hg.Program.RaiseEvent(module, hgRaiseEvent[sType], sensor['payload'], "")
+                if sType == "V_HUM":
+                    if debug: logging.info([curId, hgRaiseEvent[sType], sensor['payload'], "percent"])
+                    str = "Event raised for: %s %s %s" % (curId, hgRaiseEvent[sType], sensor['payload'])
+                    hg.Program.Notify("MySensors", str)
+                    module.Parameter(hgRaiseEvent[sType]).Value = sensor['payload']
+                    hg.Program.RaiseEvent(module, hgRaiseEvent[sType], sensor['payload'], "")
+                if sType == "V_DISTANCE":
+                    if debug: logging.info([curId, hgRaiseEvent[sType], sensor['payload'], 'cm' if units=='M' else 'inch'])
+                    #hg.Program.RaiseEvent(module, hgRaiseEvent[sType], sensor['payload'], 'cm' if units=='M' else 'inch')
+                if (sType == "V_TRIPPED" or sType == "V_LIGHT"):
+                    if debug: logging.info([curId, hgRaiseEvent[sType], 255 if sensor['payload'] == "1" else 0, ""])
+                    hg.Program.RaiseEvent(module, "Status.Level", sensor['payload'], "Switch " + curId)
+                if (sType == "V_DIMMER" or sType == "V_FORECAST"):
+                    if debug: logging.info([curId, hgRaiseEvent[sType], sensor['payload'], ""])
+                    #hg.Program.RaiseEvent(module, hgRaiseEvent[sType], sensor['payload'], "")
+            except Exception, e:
+                """ sensor node may not be registered in HG.  Try and add it here """
+                try:
+                    for key in msgPresnt.keys():
+                        if sType.replace("V_", "S_") == msgPresnt[key]:
+                            sensor['msgST'] = key
+                            sensorPres(sensor)
+                except Exception, e:
+                    if debug: logging.info("Failed to add unknown sensor: %s error: %s" % (curId, e))
+    else:
+        if debug: logging.info("Bad format from ser port: %s" % l)
+    return None
+    
+def reSendId(com, ser):
+    """ ID delayed update function """
+    d = com.split(";")
+    devId = int(d[0])
+    rTest = False
+    retries = 20
+    interval = 0
+    parentModule = hg.Modules.InDomain("HomeAutomation.HomeGenie.Automation").WithName("MySensors").Get()
+    curId = parentModule.Parameter("nextId").Value
+    if debug: logging.info("Starting resend function for %s", curId)
+    ser.write(com)
+    for i in range(retries):
+        time.sleep(interval+.5)
+        mo = hg.Modules.InDomain(moduleDomain).SelectedModules
+        curIds = set()
+        for m in mo:
+            IdChk = str(m.Address).split("/")
+            curIds.add(IdChk[0])
+        if curId not in curIds:
+            if debug: logging.info("Resend failed.  remaining attempts %i for %s", retries-i, curId)
+            ser.write(com)
+        else:
+            curId = parentModule.Parameter("nextId").Value = str(int(curId)+1)
+            if debug: logging.info("Resend done.  completed on attempt %i for %s", i, curId)
+            rTest = True
+            break
+    if not rTest:
+        if debug: logging.info("Send failed for %s", curId)
+        return None
+    return None
+
+def reSend(com, ser):
+    """ resend function"""
+    rTest = False
+    retries = 20
+    interval = 0
+    d = com.split(";")
+    devId = d[0]+"/"+d[1]
+    module = hg.Modules.InDomain(moduleDomain).WithAddress(devId).Get()
+    curState = module.Parameter("Status.Level").Value
+    curState = str(curState)
+    if debug: logging.info("Starting resend function for %s", devId)
+    ser.write(com)
+    for i in range(retries):
+        interval = interval+.5
+        time.sleep(interval)
+        newState = module.Parameter("Status.Level").Value
+        newState = str(newState)
+        if curState == newState and curState != d[-1].rstrip():
+            if debug: logging.info("Resend failed.  remaining attempts %i for %s", retries-i, devId)
+            ser.write(com)
+        else:
+            if debug: logging.info("Resend done.  completed on attempt %i for %s", i, devId)
+            rTest = True
+            break
+    if not rTest:
+        if debug: logging.info("Send failed for %s", devId)
+    return None
+
+def announce():
+    """try and add current virtual modules at startup"""
+    add={}
+    for m in hg.Modules.InDomain(moduleDomain).SelectedModules:
+        if str(m.Address) and len(str(m.Address)) &gt; 0:
+            for i in m.Properties:
+                if i.Name == "Widget.DisplayModule":
+                    add[str(m.Address)] = {"hgType": str(m.DeviceType), "hgWidget": str(i.Value)}
+    for dev in add.keys():
+        hg.Program.AddVirtualModule(moduleDomain, dev, add[dev]["hgType"], add[dev]["hgWidget"])
+        if debug: logging.info("announcing device: %s, type: %s, widget: %s" % (dev, add[dev]["hgType"], add[dev]["hgWidget"]))
+    return None
+
+class serialRead(threading.Thread):
+    def __init__(self, queue_read, ser):
+        threading.Thread.__init__(self)
+        self.queue = queue_read
+        self.ser = ser
+    def run(self):
+        while True:
+            data = self.ser.readline()
+            if data:
+                if debug: logging.info("got read queue data: %s", data.rstrip())
+                self.queue.put(str(data))
+
+class serialWrite(threading.Thread):
+    def __init__(self, queue_write, ser):
+        threading.Thread.__init__(self)
+        self.queue = queue_write
+        self.ser = ser
+    def run(self):
+        while True:
+            try:
+                data = self.queue.get(timeout=.5)
+                if debug: logging.info("got write queue data: %s", data.rstrip())
+                if data and len(data) &gt; 0:
+                    # check if ack flag is set and V_LIGHT to resend on failure
+                    if data.split(";")[3] == "1" and msgSet[data.split(";")[4]] == "V_LIGHT":
+                        reSend(data, self.ser)
+                    elif data.split(";")[3] == "1" and msgInt[data.split(";")[4]] == "I_ID_RESPONSE":
+                        reSendId(data, self.ser)
+                    else:
+                        self.ser.write(data)
+            except Queue.Empty:
+                pass
+            except Exception, e:
+                if debug: logging.info("write thread error: %s", e)
+                pass
+
+class MySensors(threading.Thread):
+    def __init__(self, device):
+        self.device = device
+        self.ser = serial.Serial(self.device, 115200, timeout=.2)
+        self.ser.open()
+        threading.Thread.__init__(self)
+        self.queue_read = Queue.Queue()
+        thread_read = serialRead(self.queue_read, self.ser)
+        thread_read.setDaemon(True)
+        thread_read.start()
+        if debug: logging.info("started read thread")
+        thread_write = serialWrite(queue_write, self.ser)
+        thread_write.setDaemon(True)
+        thread_write.start()
+        if debug: logging.info("started write thread")
+    def run(self):
+        while True:
+            try:
+                data = self.queue_read.get(timeout=.5).rstrip()
+                if data and len(data) &gt; 0:
+                    if debug: logging.info("main thread read queue: %s", data)
+                    process_serial(data, queue_write)
+            except Queue.Empty:
+                pass
+
+hg.When.WebServiceCallReceived("HomeAutomation.MySensors", (webRecv) )
+
+try:
+    if debug: logging.info("announcing known devices")
+    announce()
+    device = portname
+    queue_write = Queue.Queue()
+    app = MySensors(device)
+    app.setDaemon(True)
+    app.start()
+    time.sleep(100)
+except KeyboardInterrupt:
+    exit(1)
+except Exception, e:
+    if debug: logging.info("main loop error: %s" % (e))
+
+hg.Program.Notify(moduleDomain, "MySensors Started")
+hg.Program.GoBackground()</ScriptSource>
+  <ScriptErrors>[{"Line":0,"Column":0,"ErrorMessage":"  at IronPython.Runtime.Operations.PythonOps.GetVariable (IronPython.Runtime.CodeContext context, System.String name, Boolean isGlobal, Boolean lightThrow) [0x00000] in &lt;filename unknown&gt;:0 \n  at IronPython.Compiler.LookupGlobalInstruction.Run (Microsoft.Scripting.Interpreter.InterpretedFrame frame) [0x00000] in &lt;filename unknown&gt;:0 \n  at Microsoft.Scripting.Interpreter.Interpreter.Run (Microsoft.Scripting.Interpreter.InterpretedFrame frame) [0x00000] in &lt;filename unknown&gt;:0 ","ErrorNumber":"-1","CodeBlock":"CR"}]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features />
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>MySensors</Name>
+  <Description>This app implements MySensors in HG http://mysensors.org/
+The only supported GW at this time is the serial GW v1.4 http://mysensors.org/build/serial_api</Description>
+  <Group>MySensors</Group>
+  <ActivationTime>2014-10-20T01:50:02.54117Z</ActivationTime>
+  <TriggerTime>2014-10-20T01:50:02.696066Z</TriggerTime>
+  <Type>Python</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>Program.Setup(()=&gt;
+{
+	// register 3 virtual modules using the "switch" widget    
+	Program.AddVirtualModules("Components.RFX433A", "Switch", "homegenie/generic/switch", 1, 3);                  
+});
+// returning true will execute the "Code to Run"
+return true;
+</ScriptCondition>
+  <ScriptSource>var portname = "/dev/ttyUSB0";
+
+var rawCommands = new Dictionary<string, List<byte[]>>();
+rawCommands.Add("1", new List<byte[]>() { new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF4, 0x5F, 0x59, 0x01, 0x01, 0x00, 0x00 }, new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF4, 0x5F, 0x59, 0x01, 0x00, 0x00, 0x00 }});
+rawCommands.Add("2", new List<byte[]>() { new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x08, 0x01, 0x00, 0x00 }, new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x08, 0x00, 0x00, 0x00 }});
+rawCommands.Add("3", new List<byte[]>() { new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x0D, 0x01, 0x00, 0x00 }, new byte[11] { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x0D, 0x00, 0x00, 0x00 }});
+
+
+SerialPort
+  	.WithName( portname )
+  	.Connect( 38400 );
+
+    var rfxModules = Modules.InDomain("Components.RFX433A");
+    When.WebServiceCallReceived("Components.RFX433A", ( args ) =&gt; 
+    {
+        var res = "{ 'ResponseValue' : 'ERROR' }";
+        string[] reqs = ((string)args).Split('/');
+        //string domain = reqs[0];
+    
+        try
+        {
+            string address = reqs[1];
+            string command = reqs[2];
+            //string parameter = ""; if (reqs.Length > 3) parameter = Uri.UnescapeDataString(reqs[3]);
+
+            var module = rfxModules.WithAddress(address).Get();
+            switch(command)
+	    {          
+          
+              case "Control.On":
+                byte[] message_on = rawCommands[address][0];
+                SerialPort.SendMessage(message_on); 
+                Program.RaiseEvent(module, "Status.Level", "1", "RFX433A Module");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+                            
+              case "Control.Off":
+                byte[] message_off = rawCommands[address][1];
+                SerialPort.SendMessage(message_off);
+                Program.RaiseEvent(module, "Status.Level", "0", "RFX433A Module");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;       
+         
+ 	    }
+	} 
+	catch (Exception ex) 
+	{ 
+	    res = ex.Message + " " + ex.StackTrace;
+	}
+	// unable to process request
+	return res;
+});
+//
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1023</Address>
+  <Name>Hallway Light</Name>
+  <Description>LightwaveRF Test Progam</Description>
+  <Group>Devices and Things</Group>
+  <ActivationTime>2014-08-13T22:58:10.9499Z</ActivationTime>
+  <TriggerTime>2014-08-13T22:58:14.033725Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

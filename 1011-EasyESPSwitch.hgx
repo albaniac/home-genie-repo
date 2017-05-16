@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>Program.Run();
+return true;
+//var domain = "Components.EasyESP";
+//Program.addVirtualModule(domain, "3", "Switch", "");
+//Program.addFeature(domain, "Switch", "Status.Level", "Set switch on/off", "slider:0:1:1");
+
+</ScriptCondition>
+  <ScriptSource>var moduleDomain = "Components.EasyESP";
+var EasyESP1IP = "10.13.10.113";
+var tmpjson="";
+//http://10.13.10.104/api/Components.EasyESP/1/Control.On 
+//http://10.13.10.104/api/Components.EasyESP/1/Control.On
+
+//var modules = Modules.inDomain(moduleDomain);
+
+//initialize();
+
+Program.AddVirtualModule(
+    moduleDomain,          // &lt;-- domain name
+    "1",                         // &lt;-- module address
+    "Switch",                    // &lt;-- module type
+    "homegenie/generic/switch"); // &lt;-- widget used to display this module
+
+// This program will be displayed as a simple button
+//Program.UseWidget("homegenie/generic/switch");
+
+When.WebServiceCallReceived(moduleDomain, (args) =&gt; {
+    // All API requests going to the "moduleDomain" 
+    // will hit this piece of code.
+    // e.g. for the "On" command, &lt;args&gt; will contain the string
+    // "MyProgram.Domain/1/Control.On", so...
+    string[] req = ((string)args).Split('/');
+    string domain = req[0], address = req[1], command = req[2];
+    // be optimistic
+    var response = "{ \"ResponseValue\" : \"Ok\" }";
+    // get a reference to the addressed module
+    var module = Modules.InDomain(domain).WithAddress(address).Get();
+    // process the command
+    switch (command)
+    {
+        case "Control.On":
+            // set the status of the module to on
+            Program.RaiseEvent(module, "Status.Level", "1", "Switched on");
+      		tmpjson = Net.WebService("http://10.13.10.113/control?cmd=GPIO,12,1").GetData();
+      		Program.Notify("ESP State ", "ON");
+            break;
+        case "Control.Off":
+            // set the status of the module to off
+            Program.RaiseEvent(module, "Status.Level", "0", "Switched off");
+            tmpjson = Net.WebService("http://10.13.10.113/control?cmd=GPIO,12,0").GetData();
+            break;
+        default:
+            response = "{ \"ResponseValue\" : \"Error\" }";
+            Program.Notify("MyProgram", "Unrecognized command received");
+            break;
+    }
+    return response;
+});
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1003</Address>
+  <Name>EasyESPSwitch</Name>
+  <Description />
+  <Group>Piotr</Group>
+  <Features />
+  <ActivationTime xsi:nil="true" />
+  <TriggerTime xsi:nil="true" />
+  <Type>CSharp</Type>
+  <IsEnabled>false</IsEnabled>
+</ProgramBlock>

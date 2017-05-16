@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>Program.Setup(()=&gt;
+{
+	// register 2 virtual modules using the "switch" widget    
+	Program.AddVirtualModules("HomeGenie.Buzzer", "Switch", "homegenie/generic/switch", 1, 1);                  
+});
+// returning true will execute the "Code to Run"
+return true;
+</ScriptCondition>
+  <ScriptSource>Program.AddVirtualModules("Components.RFX433A", "Switch", "homegenie/generic/switch", 1, 3);
+
+var portname = "/dev/ttyUSB0";
+SerialPort
+  	.WithName( portname )
+  	.Connect( 38400 );   
+    When.WebServiceCallReceived("Components.RFX433A", ( args ) =&gt; 
+    {
+        string[] reqs = ((string)args).Split('/');
+        var res = "{ 'ResponseValue' : 'ERROR' }";
+    
+        try
+        {
+            string command = reqs[2];
+            var module1 = Modules.InDomain("Components.RFX433A").WithAddress("1").Get();
+            var module2 = Modules.InDomain("Components.RFX433A").WithAddress("2").Get();
+            var module3 = Modules.InDomain("Components.RFX433A").WithAddress("3").Get();
+          switch(command)
+	    {
+          
+          
+              case "Control.On":
+              byte[] message = { 0x0A, 0x14, 0x00, 0x02, 0xF4, 0x5F, 0x59, 0x01, 0x01, 0x00, 0x00 };
+                SerialPort.SendMessage(message); 
+               Program.RaiseEvent(module1, "Status.Level", "1", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+                            
+              case "Control.Off":
+              	byte[] message2 = { 0x0A, 0x14, 0x00, 0x02, 0xF4, 0x5F, 0x59, 0x01, 0x00, 0x00, 0x00 };
+                 SerialPort.SendMessage(message2);
+                Program.RaiseEvent(module1, "Status.Level", "0", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+        
+              case "Control2.On":
+              byte[] message3 = { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x08, 0x01, 0x00, 0x00 };
+                SerialPort.SendMessage(message3); 
+               Program.RaiseEvent(module2, "Status.Level", "1", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+                            
+              case "Control2.Off":
+              byte[] message4 = { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x08, 0x00, 0x00, 0x00 };
+                 SerialPort.SendMessage(message4);
+                Program.RaiseEvent(module2, "Status.Level", "0", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+            
+                          case "Control3.On":
+              byte[] message5 = { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x0D, 0x01, 0x00, 0x00 };
+                SerialPort.SendMessage(message5); 
+               Program.RaiseEvent(module3, "Status.Level", "1", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+                            
+              case "Control3.Off":
+              byte[] message6 = { 0x0A, 0x14, 0x00, 0x02, 0xF3, 0x17, 0xE0, 0x0D, 0x00, 0x00, 0x00 };
+                 SerialPort.SendMessage(message6);
+                Program.RaiseEvent(module3, "Status.Level", "0", "RFX433A");
+                res = "{ 'ResponseValue' : 'OK' }";
+                break;
+         
+ 	    }
+	} 
+	catch (Exception ex) 
+	{ 
+	    res = ex.Message + " " + ex.StackTrace;
+	}
+	// unable to process request
+	return res;
+});
+//
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features />
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1023</Address>
+  <Name>Hallway Light</Name>
+  <Description>LightwaveRF Test Progam</Description>
+  <Group>Devices and Things</Group>
+  <ActivationTime>2014-08-13T22:58:10.9499Z</ActivationTime>
+  <TriggerTime>2014-08-13T22:58:14.033725Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

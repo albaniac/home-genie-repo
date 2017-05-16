@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>"""
+Put your trigger code logic here.
+Call 'hg.SetConditionTrue()' when you want
+the 'Code To Run' to be executed.
+"""
+
+def appsetup():
+	hg.Program.AddInputField("ModulesCount", "3", "Connected sensors number")
+	hg.Program.AddFeatureTextInput("HomeAutomation.OneWire", "Sensor", "OneWire.DeviceId", "1-Wire Device ID")
+	return
+
+hg.Program.Setup(appsetup)   
+hg.SetConditionTrue()
+</ScriptCondition>
+  <ScriptSource>"""
+Python Automation Script
+Example for using Helper Classes:
+hg.Modules.WithName('Light 1').On()
+"""
+import sys
+sys.path.append("/usr/lib/python2.7/")
+import os
+import time
+
+os.system('modprobe w1-gpio')
+os.system('modprobe w1-therm')
+
+w1devpath = '/sys/bus/w1/devices/'
+
+def temp_raw(sensorid):
+  f = open(w1devpath + sensorid + '/w1_slave', 'r')
+  lines = f.readlines()
+  f.close()
+  return lines
+  
+def read_temp(sensorid):
+  lines = temp_raw(sensorid)
+  if len(lines) == 0:
+    return ''
+  while lines[0].strip()[-3:] != 'YES':
+    time.sleep(0.2)
+    lines = temp_raw()
+  temp_output = lines[1].find('t=')
+  if temp_output != -1:
+    temp_string = lines[1].strip()[temp_output+2:]
+    temp_c = float(temp_string) / 1000.0
+    temp_f = temp_c * 9.0 / 5.0 + 32.0
+    return temp_c, temp_f
+
+# add virtual modules for 1-wire domain
+sensorcount = int(hg.Program.InputField('ModulesCount').DecimalValue)
+hg.Program.AddVirtualModules('HomeAutomation.OneWire', 'Sensor', 'homegenie/generic/sensor', 1, sensorcount)
+
+while hg.Program.IsEnabled:
+  for n in range(1, sensorcount+1):
+    # get a reference to the virtual module associated with current sensor
+    module = hg.Modules.InDomain('HomeAutomation.OneWire').WithAddress(str(n)).Get()
+    moduleid = module.Parameter('OneWire.DeviceId').Value
+    # if a sensor id has been specified for the module, then we read and update temperature values
+    if len(moduleid) &gt; 0:
+      try:
+        values = read_temp(moduleid)
+        if len(values) &gt; 0:
+          # update virtual module data
+          hg.Program.RaiseEvent(module, 'Sensor.Temperature', str(values[0]), "1-Wire Sensor")
+          hg.Program.RaiseEvent(module, 'Sensor.TemperatureF', str(values[1]), "1-Wire Sensor")
+      except IOError:
+        hg.Program.Notify('OneWire', 'Cannot read from ' + moduleid)
+    time.sleep(1)
+  # wait some time before next update cycle
+  time.sleep(10)</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>false</IsRunning>
+  <Features>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.OneWire</ForDomains>
+      <ForTypes>Sensor</ForTypes>
+      <Property>OneWire.DeviceId</Property>
+      <Description>1-Wire Device ID</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1016</Address>
+  <Name>1-Wire Temperature Sensor modules</Name>
+  <Description>Add sensor virtual modules mapped to 1-wire devices (the device id must be specified in the module options)
+
+see https://www.modmypi.com/blog/ds18b20-one-wire-digital-temperature-sensor-and-the-raspberry-pi</Description>
+  <Group>HAL Specific</Group>
+  <ActivationTime>2014-09-20T16:28:04.473566Z</ActivationTime>
+  <TriggerTime>2014-09-20T16:28:04.93411Z</TriggerTime>
+  <Type>Python</Type>
+  <IsEnabled>false</IsEnabled>
+</ProgramBlock>

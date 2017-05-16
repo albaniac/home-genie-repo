@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// David Wallis 03-12-15
+// Version 1.0
+
+var moduleDomain = "HomeAutomation.Alarm.ContactID";
+
+Program.Setup(() =&gt;
+{
+      // Used for calling web service from other programs
+      Program.AddVirtualModules(moduleDomain, "Switch", "homegenie/generic/program", 1, 1);
+  
+      // Logging Settings
+      Program.AddOption("Logging", "FALSE", "Enable logging","text");
+      Program.AddOption("LogPath", @"/usr/local/bin/homegenie/log/ContactID.log", "Path to debugging log file","text");
+  
+      Program.Parameter("LastUpdate").Value = DateTime.Now.ToString();
+});
+return true;</ScriptCondition>
+  <ScriptSource>// David Wallis 03-12-15
+// Version 1.1
+
+var port = 10001;
+var moduleDomain = "HomeAutomation.Texecom.ContactID";
+string logging = Program.Option("Logging").Value;
+var logPath = Program.Option("LogPath").Value;
+
+Action&lt;string&gt; Log = (string logtext) =&gt;
+{
+  if ((string.IsNullOrEmpty(logPath) == false) &amp;&amp; (logging.ToUpper() == "TRUE"))
+  {
+     System.IO.File.AppendAllText(logPath, DateTime.Now.ToLocalTime().ToString("dd-MM-yyyy HH.mm.ss.ffff") + " " + logtext + "\n");
+     // Program.Notify(moduleDomain,logtext); 
+  }
+};
+
+Func&lt;string, bool&gt; ValidateChecksum = (string data) =&gt;
+{
+   Log("Validating Checksum");  
+   // Calculate Checksum
+   int sum = 0;
+
+   // Sum each char, substuting 0's with 10
+   foreach (char c in data.Remove(data.Length - 1)) // Ignore last char (checksum)
+   {
+       if (c == '0')
+       {
+           sum += 10;
+       }
+       else
+       {
+           sum += int.Parse(c.ToString());
+       }
+   }
+
+   // Calculate checksum
+   var calcCheckSum = 15 - sum % 15;
+   if (calcCheckSum == 0) calcCheckSum = 15;
+
+   // Convert ASCII Value to real value (0 = 48)
+   int checksum = data[data.Length - 1] - '0';
+
+   // Validate calculated checksum against provided checksum (last char) and return result
+   return (calcCheckSum == checksum);
+
+};
+
+Func&lt;string, bool&gt; ProcessMessage = (string msg) =&gt;
+{
+   Log("Processing Messaging " + msg);
+  
+   var formatType = msg.Substring(1, 1); // 1= Fast Format 2 = Contact ID 3 = SIA 
+   var accountNumber = msg.Substring(1, 4); // Account Number, 4 Digits
+   var messageType = msg.Substring(5, 2); // This should be 18 or 98
+   var eventQualifier = msg.Substring(7, 1); // 1 = New Event or Opening, 3 = New Restore or Closing, 6 = Previously Reported condition still present (status Report)
+
+   // Needs refinement for dealing with hex...
+   var eventCode = msg.Substring(8, 3); // Event Code
+   var groupNumber = msg.Substring(11, 2); // Area Number
+   var zoneNumber = msg.Substring(13, 2); // Zone Number
+
+   Program.Notify("ContactID",String.Format("Account Number {0} Message Type: {1} Event Qualifier {2} Event Code {3} Group Number {4} Zone Number {5}",
+       accountNumber, messageType, eventQualifier, eventCode, groupNumber, zoneNumber));
+
+   if (!ValidateChecksum(msg.Substring(1,16)))
+   {
+       Log("Invalid Checksum");     
+       Program.Notify("ContactID","Invalid Checksum");
+       return false;
+   }
+
+   var sms = Modules.InDomain("HomeAutomation.SMS").WithAddress("1").Get();
+  
+   switch (eventCode)
+   {
+       case "401": // Set / Unset alarm
+           if (eventQualifier == "1") //  # Unset
+           { 
+               Program.Notify("ContactID","Alarm Un-set by " + zoneNumber + ", Area: " + groupNumber);
+               // sms.Command("Send:07733xxxxx").Set("Alarm Un-set by " + zoneNumber + ", Area: " + groupNumber);             
+           }
+           else if (eventQualifier == "3") // Set
+           {              
+               Program.Notify("ContactID","Alarm Set by " + zoneNumber + ", Area: " + groupNumber);
+               if (groupNumber == "1")
+               {
+                   Program.Notify("ContactID","Set away to ON for heating if outside of window 5am and 10pm");
+               }
+           }
+           break;
+       case "408": // Quick Arm
+           Program.Notify("ContactID","Quick Arm, Area: " + groupNumber);
+           if (groupNumber == "1")
+           {            
+               Program.Notify("ContactID","Set away for heating if outside of window 5am and 10pm and area is house");
+           }
+           break;
+       case "409": // Key Switch Arm
+           Program.Notify("ContactID","Roller shutter auto arm, Area: " + groupNumber);
+           break;
+       case "457": //
+           if (eventQualifier == "1")
+           { // Failed to Set Alarm
+               Program.Notify("ContactID","Failed to Set Alarm for Area: " + groupNumber);
+               // sms.Command("Send:07733xxxxx").Set("Failed to Set Alarm for Area: " + groupNumber);
+           }
+           break;
+       case "130": // Alarm Triggered
+           if (eventQualifier == "1")
+           {
+               Program.Notify("ContactID","Alarm Triggered, Area: " + groupNumber + " Triggering Zone: " + zoneNumber);
+               // sms.Command("Send:07733xxxxx").Set("Alarm Triggered, Area: " + groupNumber + " Triggering Zone: " + zoneNumber);
+           }
+           break;
+       case "406": //
+           if (eventQualifier == "1")
+           {
+               Program.Notify("ContactID","Alarm Silenced, Area: " + groupNumber);
+               // sms.Command("Send:07733xxxxx").Set("Alarm Silenced, Area: " + groupNumber);
+           }
+           break;
+       case "411": //
+           if (eventQualifier == "1")
+           {
+               Program.Notify("ContactID","Download Access, Area: " + groupNumber);
+           }
+           break;
+       case "412": //
+           if (eventQualifier == "1")
+           {
+               Program.Notify("ContactID","Download Success, Area: " + groupNumber);
+           }
+           break;
+       case "133": //
+           if (eventQualifier == "1")
+           {
+               Program.Notify("ContactID","TBD, Area: " + groupNumber);
+           }
+           break;
+       default:
+           Program.Notify("ContactID","Time: Account Number: {1} Message Type: {2} Event Qualifier: {3} Event Code: {4} Group Number: {5} Zone Number: {6}",
+              DateTime.Now.ToLocalTime().ToString("dd-MM-yyyy HH.mm.ss.ffff"), accountNumber, messageType, eventQualifier, eventCode, groupNumber, zoneNumber);
+           break;
+   }
+
+   return true;
+};
+
+while (Program.IsEnabled){
+    byte[] bytes = new Byte[1024];
+    string data = null;
+
+    // This will need altering if multiple adapters running ip v4 are present    
+    System.Net.IPAddress ipAddress = null;
+    System.Net.IPHostEntry ipHostInfo = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
+
+    foreach (var addr in ipHostInfo.AddressList)
+    {
+        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            ipAddress = addr;
+              Log("Binding to IP Address " + ipAddress.ToString());
+            break;
+        }
+    }
+    
+    // Create Endpoint
+    System.Net.IPEndPoint localEndPoint = new System.Net.IPEndPoint(ipAddress, port);
+
+    // Create a TCP/IP socket.
+    System.Net.Sockets.Socket listener = new System.Net.Sockets.Socket(
+        System.Net.Sockets.AddressFamily.InterNetwork,
+        System.Net.Sockets.SocketType.Stream,
+        System.Net.Sockets.ProtocolType.Tcp
+    );
+
+    try
+    {
+        // Bind the socket and listen for incoming connections.
+        listener.Bind(localEndPoint);
+        listener.Listen(10);
+
+        // Start listening
+        while (true)
+        {
+            Log ("Waiting for connection");
+            System.Net.Sockets.Socket handler = listener.Accept();  // Blocking call
+            data = null;
+
+            // Connection Established, Process it.
+            while (true)
+            {
+                bytes = new byte[1024];
+                int bytesRec = handler.Receive(bytes);
+
+                data += Encoding.ASCII.GetString(bytes, 0, bytesRec);
+
+                if (data.Length == 19)
+                {
+                    // Send acknowledgement Packet
+                    Log ("Sending Ack");
+                    handler.Send(new byte[] { 0x06, 0x0d, 0x0a });
+                    
+                    // Process message, change to run async?
+                    bool result = ProcessMessage(data);
+                    data = null;
+                }
+                else
+                {
+                    // hang up message
+                    break;
+                }
+            }
+
+            // Close socket
+            Log ("Closing Socket");
+            handler.Shutdown(System.Net.Sockets.SocketShutdown.Both);
+            handler.Close();
+        }
+    }
+    catch (Exception e)
+    {
+          Log ("Error: " + e.ToString());
+        Console.WriteLine(e.ToString());
+    } 
+}
+
+
+Program.GoBackground();
+</ScriptSource>
+  <ScriptErrors />
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1008</Address>
+  <Name>ContactID Protocol Receiver</Name>
+  <Description>Receives messages from alarm panels using the ContactID protocol</Description>
+  <Group>Alarm</Group>
+  <Features />
+  <ActivationTime>2016-06-23T22:52:15.199821Z</ActivationTime>
+  <TriggerTime>2016-06-23T22:52:15.77435Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

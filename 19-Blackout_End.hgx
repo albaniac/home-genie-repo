@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>19</Address>
+  <Name>Blackout End</Name>
+  <Description>Monitor a device that can report metering to find out
+and report when there is a black out. </Description>
+  <Group>Monitor</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2013-12-07T01:49:54.541107Z</ActivationTime>
+  <TriggerTime xsi:nil="true" />
+  <ScriptCondition>Program.Setup( () =&gt; {
+
+    Program.AddInputField("Monitor.BlackoutDevice", "", "Name of the module to monitor");
+  
+});
+
+// a blackout can be detected when the metering value of a given device is 0
+var monitoreddevice = Modules
+  		.WithName( Program.InputField("Monitor.BlackoutDevice").Value )
+  		.Get();
+
+return (monitoreddevice.WasFound &amp;&amp; 
+        monitoreddevice.Parameter("Meter.Watts").DecimalValue &gt; 0);
+</ScriptCondition>
+  <ScriptSource>// this will show a popup in the UI 
+Program.Notify("System Monitor", "Power is currently up!");
+// this will play a voice (from hg host speaker) saying a power up message
+Program.Say("Received metering report from UPS Socket: power is currently up.", "en");</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnSwitchTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>false</IsRunning>
+  <IsEvaluatingConditionBlock>true</IsEvaluatingConditionBlock>
+  <Features />
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+  <IsEnabled>false</IsEnabled>
+</ProgramBlock>

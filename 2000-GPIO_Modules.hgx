@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions>
+    <ProgramCondition>
+      <Domain>HomeAutomation.ZWave</Domain>
+      <Target>37</Target>
+      <Property>Sensor.DoorWindow</Property>
+      <ComparisonOperator>Equals</ComparisonOperator>
+      <ComparisonValue>255</ComparisonValue>
+    </ProgramCondition>
+  </Conditions>
+  <Commands>
+    <ProgramCommand>
+      <Domain>HomeAutomation.ZWave</Domain>
+      <Target>4</Target>
+      <CommandString>Control.Off</CommandString>
+      <CommandArguments />
+    </ProgramCommand>
+  </Commands>
+  <ScriptCondition>Program.AddOption("GPIO2", "OUT", "GPIO2 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO3", "OFF", "GPIO3 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO4", "OFF", "GPIO4 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO5", "OUT", "GPIO5 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO6", "OUT", "GPIO6 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO7", "OUT", "GPIO7 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO8", "OUT", "GPIO8 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO9", "OUT", "GPIO9 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO10", "OUT", "GPIO10 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO11", "OUT", "GPIO11 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO12", "OUT", "GPIO12 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO13", "OUT", "GPIO13 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO14", "OUT", "GPIO14 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO15", "OUT", "GPIO15 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO16", "OUT", "GPIO16 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO17", "OUT", "GPIO17 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO18", "OUT", "GPIO18 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO19", "OUT", "GPIO19 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO20", "OUT", "GPIO20 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO21", "OUT", "GPIO21 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO22", "OUT", "GPIO22 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO23", "OUT", "GPIO23 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO24", "OUT", "GPIO24 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO25", "OUT", "GPIO25 (IN, OUT or OFF)", "text");
+Program.AddOption("GPIO26", "OUT", "GPIO26 (IN, OUT or OFF)", "text");
+Program.Run();
+</ScriptCondition>
+  <ScriptSource>var moduleDomain = "RaspberryPi.Gpio";
+
+var pinMapping = new List&lt;dynamic&gt;();
+// read GPIO configuration
+var gpio2 = Program.Option("GPIO2").Value.ToLower();
+var gpio3 = Program.Option("GPIO3").Value.ToLower();
+var gpio4 = Program.Option("GPIO4").Value.ToLower();
+var gpio5 = Program.Option("GPIO5").Value.ToLower();
+var gpio6 = Program.Option("GPIO6").Value.ToLower();
+var gpio7 = Program.Option("GPIO7").Value.ToLower();
+var gpio8 = Program.Option("GPIO8").Value.ToLower();
+var gpio9 = Program.Option("GPIO9").Value.ToLower();
+var gpio10 = Program.InputField("GPIO10").Value.ToLower();
+var gpio11 = Program.InputField("GPIO11").Value.ToLower();
+var gpio12 = Program.InputField("GPIO12").Value.ToLower();
+var gpio13 = Program.InputField("GPIO13").Value.ToLower();
+var gpio14 = Program.InputField("GPIO14").Value.ToLower();
+var gpio15 = Program.InputField("GPIO15").Value.ToLower();
+var gpio16 = Program.InputField("GPIO16").Value.ToLower();
+var gpio17 = Program.InputField("GPIO17").Value.ToLower();
+var gpio18 = Program.InputField("GPIO18").Value.ToLower();
+var gpio19 = Program.InputField("GPIO19").Value.ToLower();
+var gpio20 = Program.InputField("GPIO20").Value.ToLower();
+var gpio21 = Program.InputField("GPIO21").Value.ToLower();
+var gpio22 = Program.InputField("GPIO22").Value.ToLower();
+var gpio23 = Program.InputField("GPIO23").Value.ToLower();
+var gpio24 = Program.InputField("GPIO24").Value.ToLower();
+var gpio25 = Program.InputField("GPIO25").Value.ToLower();
+var gpio26 = Program.InputField("GPIO26").Value.ToLower();
+// add configured GPIOs to a list that will be used to configure the connection
+if (gpio2 != "off") pinMapping.Add(new { Config = gpio2, Address = "GPIO2", Pin = ConnectorPin.P1Pin3, Direction = ( gpio2.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio2.StartsWith("!") });
+if (gpio3 != "off") pinMapping.Add(new { Config = gpio3, Address = "GPIO3", Pin = ConnectorPin.P1Pin5, Direction = (gpio3.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio3.StartsWith("!") });
+if (gpio4 != "off") pinMapping.Add(new { Config = gpio4, Address = "GPIO4", Pin = ConnectorPin.P1Pin7, Direction = (gpio4.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio4.StartsWith("!") });
+if (gpio5 != "off") pinMapping.Add(new { Config = gpio5, Address = "GPIO5", Pin = ConnectorPin.P1Pin29, Direction = (gpio5.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio5.StartsWith("!") });
+if (gpio6 != "off") pinMapping.Add(new { Config = gpio6, Address = "GPIO6", Pin = ConnectorPin.P1Pin31, Direction = (gpio6.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio6.StartsWith("!") });
+if (gpio7 != "off") pinMapping.Add(new { Config = gpio7, Address = "GPIO7", Pin = ConnectorPin.P1Pin26, Direction = (gpio7.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio7.StartsWith("!") });
+if (gpio8 != "off") pinMapping.Add(new { Config = gpio8, Address = "GPIO8", Pin = ConnectorPin.P1Pin24, Direction = (gpio8.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio8.StartsWith("!") });
+if (gpio9 != "off") pinMapping.Add(new { Config = gpio9, Address = "GPIO9", Pin = ConnectorPin.P1Pin21, Direction = (gpio9.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio9.StartsWith("!") });
+if (gpio9 != "off") pinMapping.Add(new { Config = gpio9, Address = "GPIO9", Pin = ConnectorPin.P1Pin21, Direction = (gpio9.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio9.StartsWith("!") });
+if (gpio10 != "off") pinMapping.Add(new { Config = gpio10, Address = "GPIO10", Pin = ConnectorPin.P1Pin19, Direction = (gpio10.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio10.StartsWith("!") });
+if (gpio11 != "off") pinMapping.Add(new { Config = gpio11, Address = "GPIO11", Pin = ConnectorPin.P1Pin23, Direction = (gpio11.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio11.StartsWith("!") });
+if (gpio12 != "off") pinMapping.Add(new { Config = gpio12, Address = "GPIO12", Pin = ConnectorPin.P1Pin32, Direction = (gpio12.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio12.StartsWith("!") });
+if (gpio13 != "off") pinMapping.Add(new { Config = gpio13, Address = "GPIO13", Pin = ConnectorPin.P1Pin33, Direction = (gpio13.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio13.StartsWith("!") });
+if (gpio14 != "off") pinMapping.Add(new { Config = gpio14, Address = "GPIO14", Pin = ConnectorPin.P1Pin8, Direction = (gpio14.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio14.StartsWith("!") });
+if (gpio15 != "off") pinMapping.Add(new { Config = gpio15, Address = "GPIO15", Pin = ConnectorPin.P1Pin10, Direction = (gpio15.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio15.StartsWith("!") });
+if (gpio16 != "off") pinMapping.Add(new { Config = gpio16, Address = "GPIO16", Pin = ConnectorPin.P1Pin36, Direction = (gpio16.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio16.StartsWith("!") });
+if (gpio17 != "off") pinMapping.Add(new { Config = gpio17, Address = "GPIO17", Pin = ConnectorPin.P1Pin11, Direction = (gpio17.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio17.StartsWith("!") });
+if (gpio18 != "off") pinMapping.Add(new { Config = gpio18, Address = "GPIO18", Pin = ConnectorPin.P1Pin12, Direction = (gpio18.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio18.StartsWith("!") });
+if (gpio19 != "off") pinMapping.Add(new { Config = gpio19, Address = "GPIO19", Pin = ConnectorPin.P1Pin35, Direction = (gpio19.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio19.StartsWith("!") });
+if (gpio20 != "off") pinMapping.Add(new { Config = gpio20, Address = "GPIO20", Pin = ConnectorPin.P1Pin38, Direction = (gpio20.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio20.StartsWith("!") });
+if (gpio21 != "off") pinMapping.Add(new { Config = gpio21, Address = "GPIO21", Pin = ConnectorPin.P1Pin40, Direction = (gpio21.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio21.StartsWith("!") });
+if (gpio22 != "off") pinMapping.Add(new { Config = gpio22, Address = "GPIO22", Pin = ConnectorPin.P1Pin15, Direction = (gpio22.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio22.StartsWith("!") });
+if (gpio23 != "off") pinMapping.Add(new { Config = gpio23, Address = "GPIO23", Pin = ConnectorPin.P1Pin16, Direction = (gpio23.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio23.StartsWith("!") });
+if (gpio24 != "off") pinMapping.Add(new { Config = gpio24, Address = "GPIO24", Pin = ConnectorPin.P1Pin18, Direction = (gpio24.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio24.StartsWith("!") });
+if (gpio25 != "off") pinMapping.Add(new { Config = gpio25, Address = "GPIO25", Pin = ConnectorPin.P1Pin22, Direction = (gpio25.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio25.StartsWith("!") });
+if (gpio26 != "off") pinMapping.Add(new { Config = gpio26, Address = "GPIO26", Pin = ConnectorPin.P1Pin37, Direction = (gpio26.EndsWith("out") ? PinDirection.Output : PinDirection.Input), Reversed = gpio25.StartsWith("!") });
+
+// Setup the connection to the GPIOs
+var configuration = new PinConfiguration[pinMapping.Count];
+for (int p = 0; p &lt; pinMapping.Count; p++)
+{
+  var pc = pinMapping[p];
+  if (pc.Direction == PinDirection.Input)
+  {
+    configuration[p] = new InputPinConfiguration(PinMapping.ToProcessor(pc.Pin));
+    if (pc.Config.EndsWith("+"))
+    {
+      ((InputPinConfiguration)configuration[p]).Resistor = PinResistor.PullUp;
+    }
+    else if (pc.Config.EndsWith("-"))
+    {
+      ((InputPinConfiguration)configuration[p]).Resistor = PinResistor.PullDown;
+    }
+    Program.AddVirtualModule(moduleDomain, pc.Address, "Sensor", "homegenie/generic/sensor");                  
+  }
+  else
+  {
+    configuration[p] = new OutputPinConfiguration(PinMapping.ToProcessor(pc.Pin));
+    ((OutputPinConfiguration)configuration[p]).Reversed = pc.Reversed;
+    Program.AddVirtualModule(moduleDomain, pc.Address, "Switch", "");                  
+  }
+  configuration[p].Name = pc.Address;
+}
+
+// Allocate GPIO connection and listen for events coming from GPIO pins
+GpioConnection connection = null;
+try
+{
+  connection = new GpioConnection(configuration);
+}
+catch 
+{
+  Program.Notify("GPIO Modules", "ERROR: could not allocate some GPIO!\nPlease set to OFF GPIO\nthat are already in use.");
+  Pause(10);
+  return;
+}
+
+var pinChanged = new EventHandler&lt;PinStatusEventArgs&gt;((sender, args) =&gt; {
+  var address = args.Configuration.Name;
+  var module = Modules.InDomain(moduleDomain).WithAddress(address).Get();
+  Program.RaiseEvent(module, "Status.Level", 
+                     args.Enabled ? "1" : "0",
+                     address);
+
+});
+connection.PinStatusChanged += pinChanged;
+
+When.ProgramStopping(()=&gt;{
+  connection.PinStatusChanged -= pinChanged;
+  ((IDisposable)connection).Dispose();
+  return true;
+});
+
+// read and store current pins status
+for (int p = 0; p &lt; pinMapping.Count; p++)
+{
+  var pc = pinMapping[p];
+  var address = pc.Address;
+  var module = Modules.InDomain(moduleDomain).WithAddress(address).Get();
+  module.Parameter("Status.Level").Value = (connection[address] ? "1" : "0");
+}
+
+// implement web serice API Control.On, Control.Off, Control.Toggle 
+// for the domain RaspberryPi.GPIO
+When.WebServiceCallReceived(moduleDomain, ( args ) =&gt; {
+  string[] reqs = ((string)args).Split('/');
+  var errorMessage = "";
+  try
+  {
+    string address = reqs[1];
+    string command = reqs[2];
+    //
+    switch(command)
+    {
+      // eg. http://hg_address/api/RaspberryPi.GPIO/1/Control.On
+      case "Control.On":
+      connection[address] = true;
+      break;
+      // eg. http://hg_address/api/RaspberryPi.GPIO/3/Control.Off
+      case "Control.Off":
+      connection[address] = false;
+      break;
+      // eg. http://hg_address/api/RaspberryPi.GPIO/9/Control.Toggle
+      case "Control.Toggle":
+      connection.Toggle(address);
+      break;
+    }
+    //
+    return "{ 'ResponseValue' : 'OK' }";    
+  } 
+  catch (Exception ex) 
+  { 
+    errorMessage = ex.Message + " " + ex.StackTrace;
+  }
+  // unable to process request
+  return "{ 'ResponseValue' : 'ERROR " + errorMessage + "' }";
+});
+
+Program.GoBackground();</ScriptSource>
+  <ScriptErrors />
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1003</Address>
+  <Name>GPIO Modules</Name>
+  <Description>Raspberry Pi GPIO mapped to HG modules.
+Each GPIO can be configured as input (IN), output (OUT) or can be disabled (OFF).
+Use    IN+      to activate the internal PullUp resistor or      IN-       to activate the internal PullDown resistor.
+Use      !OUT      to Reverse the pin level  so that   On = 0    and     Off = 1.
+GPIOs configured as IN are mapped to a Sensor module with a Status.Level field displaying current pin level (0, 1).
+GPIOs configured as OUT are mapped to a Switch module that can be controlled with on/off commands and can be 
+altered line   137   &amp;   141   and swapped     true    and     false
+</Description>
+  <Group>Raspberry Pi</Group>
+  <Features />
+  <ActivationTime xsi:nil="true" />
+  <TriggerTime>2015-12-09T11:29:08.393224Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

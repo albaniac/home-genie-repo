@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// this Setup delegate will be executed once, when program become active
+Program.Setup(()=&gt;
+{   
+    Program.AddVirtualModule("HomeAutomation.Squeezebox", "1", "Switch", "homegenie/generic/switch");
+  Program.AddVirtualModule("HomeAutomation.Squeezebox", "2", "Switch", "homegenie/generic/switch");
+    // set input fields parameters
+    // &lt;field_name&gt;, &lt;default_value&gt;, &lt;description&gt;
+    Program.AddInputField("LMSServer", "192.168.192.19", "IP Address of Logitech Media Server");
+    Program.AddInputField("LMSPort", "9090", "Port of the server");
+    Program.AddInputField("MACPlayer", "00%3A04%3A20%3A29%3A62%3A10", "MacAddress of squeezebox player %3A for point");
+    Program.AddFeatureTextInput("Switch,Sensor,DoorWindow", "Squeezebox.playOnChange", "Squeezebox play a song if this is armed");
+  	Program.AddFeature("Switch,Sensor,DoorWindow", "squeezebox.EnabledSensor", "Enable Squeezebox Activation");
+    Program.Parameter("squeezebox.power").Value = "";
+    Program.Parameter("squeezebox.volume").Value = "";
+    Program.Parameter("squeezebox.title").Value = "";
+});
+//
+return true;
+</ScriptCondition>
+  <ScriptSource>	
+	var remoteServer = Program.InputField("LMSServer").Value;
+    var remotePort = Program.InputField("LMSPort").Value;
+    var MACPlayer = Program.InputField("MACPlayer").Value;
+
+// FUNCTION PARSE VARIABLES
+    Action&lt;string&gt; HandleMessageReceived = (string message) =&gt; {
+      		string[] msg = ((string)message).Split(' ');
+            switch(msg[1])
+              {
+                case "power":
+                if (string.Compare(Program.Parameter("squeezebox.power").Value,msg[2]) != 0) {
+                    Program.Parameter("squeezebox.power").Value = msg[2];
+                } 
+              	break;
+                case "mixer":
+                if (string.Compare(Program.Parameter("squeezebox.volume").Value,msg[3]) != 0 &amp;&amp; string.Compare(msg[2], "volume")==0) {
+                    Program.Parameter("squeezebox.volume").Value = msg[3];
+                    Program.RaiseEvent("squeezebox.volume", msg[3], "Squeeze box Volume");
+                } 
+              	break;
+                case "title":
+                if (string.Compare(Program.Parameter("squeezebox.title").Value,msg[2]) != 0 ) {
+                    Program.Parameter("squeezebox.title").Value = msg[2];
+                } 
+              	break;
+              }
+    };
+
+    Func&lt;string, bool&gt; Squeeze=  (string command) =&gt; 
+    {
+      TcpClient.SendMessage(MACPlayer + " " + command + "\n");
+      return true;
+    };
+
+    Func&lt;string, bool&gt; SqueezeSpeak=  (string command) =&gt; 
+    {
+      TcpClient.SendMessage(MACPlayer + " playlist play http://translate.google.com/translate_tts?ie=UTF-8&amp;client=tw-ob&amp;q=" + command + "&amp;tl=en&amp;total=1&amp;idx=0&amp;textlen=255\n");
+      return true;
+    };
+
+    Func&lt;bool, bool&gt; connectSqueeze=  (bool command) =&gt; 
+    {
+     
+		try {
+          
+            if (command) {
+              TcpClient.OnStringReceived( HandleMessageReceived );  
+              TcpClient.EndOfLine = "\n";
+              
+              TcpClient.Service( remoteServer );
+              TcpClient.Connect( 9090 );
+              Pause(1);
+            }else{
+              Pause(3);
+              TcpClient.Disconnect();
+            };
+        } catch (Exception e) {
+            Program.Notify("HomeAutomation.SqueezeBox ERROR!", e.Message);
+        }
+		 return true;
+      
+    };
+	
+//When.ModuleParameterChanged( (module, parameter) =&gt; 
+//{
+//    return true;
+//});       
+
+When.WebServiceCallReceived("HomeAutomation.Squeezebox", (args) =&gt; {
+    string[] reqs = ((string)args).Split('/');
+  	try
+    {
+      string switchnumber = reqs[1];
+      string command = reqs[2];
+      
+      var virtualMod = Modules.InDomain("HomeAutomation.Squeezebox").WithAddress(switchnumber).Get();
+      switch(command)
+      {
+            case "Control.On":
+                Program.RaiseEvent(virtualMod,"Status.Level","100","SqueezeBox");
+                break;
+            case "Control.Off":
+                Program.RaiseEvent(virtualMod,"Status.Level","0","SqueezeBox");
+                break;
+      }
+          
+    } catch (Exception e) {
+    	Program.Notify("HomeAutomation.SqueezeBox ERROR!", e.Message);
+    }
+  return "{ 'ResponseValue' : 'OK' }";
+});
+
+// REAL CODE FOR ACTION SpeakOnSecurityThreat
+
+                
+while (Program.IsEnabled)
+{
+	try
+    {
+    if (Modules.InDomain("HomeAutomation.Squeezebox").WithAddress("2").Get().Parameter("Status.Level").Value == "100") {
+      var squeezeModules = Modules.WithFeature("Squeezebox.EnabledSensor");
+      	squeezeModules.Each((module)=&gt;{
+          	Program.Notify("SqueezeBox", module.Instance.Name);
+        	if (module.IsOfDeviceType("Switch,Sensor,DoorWindow"))
+            {
+             
+            }
+        return true;  
+        }
+                         
+        );
+  	}
+    
+      
+	if (Modules.InDomain("HomeAutomation.Squeezebox").WithAddress("1").Get().Parameter("Status.Level").Value == "100") {
+      
+		if (string.Compare(Modules.WithName("Security Alarm System").Get().Parameter("Status.Level").Value, Program.Parameter("squeezebox.alarmActive").Value)!= 0 ){ 	//
+           	
+          connectSqueeze(true);
+          
+          Squeeze ("power 1");
+          Squeeze ("mixer volume 20");
+          if (Modules.WithName("Security Alarm System").Get().Parameter("Status.Level").Value == "1") {
+          		SqueezeSpeak ("Alarm%20activated");
+          } else {
+			SqueezeSpeak ("Alarm%20deactivated");
+          }
+          Program.Parameter("squeezebox.alarmActive").Value = Modules.WithName("Security Alarm System").Get().Parameter("Status.Level").Value;
+  		  Pause(5);
+          Squeeze ("mixer volume " + Program.Parameter("squeezebox.volume").Value);
+          connectSqueeze(false);
+       }
+		
+	   if (Modules.WithName("Security Alarm System").Get().Parameter("HomeGenie.SecurityTriggered").Value == "1") {
+      		connectSqueeze(true);
+       		Squeeze ("power 1");
+       		Squeeze ("mixer volume 20");
+          	SqueezeSpeak ("Alarm");
+       		Pause(5);
+       		Squeeze ("mixer volume " + Program.Parameter("squeezebox.volume").Value);
+       		connectSqueeze(false);
+       }
+      
+   }
+   Pause(4);
+          } catch (Exception e) { 
+    	Program.Notify("HomeAutomation.SqueezeBox ERROR!", e.Message);
+    }
+}</ScriptSource>
+  <ScriptErrors />
+  <IsRunning>true</IsRunning>
+  <Features>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains />
+      <ForTypes>Switch,Sensor,DoorWindow</ForTypes>
+      <Property>Squeezebox.playOnChange</Property>
+      <Description>Squeezebox play a song if this is armed</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Switch,Sensor,DoorWindow</ForTypes>
+      <Property>squeezebox.EnabledSensor</Property>
+      <Description>Enable Squeezebox Activation</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>Squeezebox</Name>
+  <Description />
+  <Group>Devices and Things</Group>
+  <ActivationTime>2015-03-09T21:15:22.059219Z</ActivationTime>
+  <TriggerTime>2015-03-23T10:17:55.494131Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

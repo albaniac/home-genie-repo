@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1000</Address>
+  <Name>Power Producing/Consuming Management</Name>
+  <Description>Collects and stores real-time information about
+instant power consuming and instant power producing using a Aeon HEM2 device with Clamp1 for producing and Clamp2 for consuming</Description>
+  <Group>Energy Management</Group>
+  <Type>CSharp</Type>
+  <ActivationTime>2013-12-14T20:04:08.9046698Z</ActivationTime>
+  <TriggerTime>2013-12-14T20:03:38.3029195Z</TriggerTime>
+  <ScriptCondition>// A "return true;" statement at any point of this code block, will cause the program to run.
+// For manually activated program, just leave a "return false" statement here.
+//Program.Setup( () =&gt; {
+  
+//	Program.AddFeature("Siren,Light,Dimmer,Switch", "HomeGenie.SecurityAlarm", "Security Alarm");
+  	//
+
+//});
+
+
+return true;
+</ScriptCondition>
+  <ScriptSource>
+Program.AddFeature("Switch", "PowerMonitor.PowerMonitorLedSignals", "Use Fibaro Led for PowerMonitor Signals (Red=No AutoConsume,Yellow=Partial Auto-Consume,Green Total Auto-Consume)");
+
+Program.AddInputField("PowerMonitor.InstalledMaxPowerWatts", "3300", "1. Installed Max Power Energy [Watts]");
+Program.AddInputField("PowerMonitor.FVInverterConsumingInIdleModeWatts", "22", "2. Max Power Consuming of FV system when in idle mode (during night) [Watts]");
+//if setted different from 0, it enable to report the clamps1 and clamps2 wattage as Meter.Watts
+Program.AddInputField("PowerMonitor.ReportAs.Meter.Watts", "0", "3. Report Power as Meter.Watts");
+
+Program.Parameter("PowerMonitor.ProducingWatts").Value = "0";
+Program.Parameter("PowerMonitor.ConsumingWatts").Value = "0";
+Program.Parameter("PowerMonitor.DifferenceWatts").Value = "0";  
+Program.Parameter("PowerMonitor.FreeProducingWatts").Value = "0";
+Program.Parameter("PowerMonitor.FreeConsumingWatts").Value = Program.InputField("PowerMonitor.InstalledMaxPowerWatts").DecimalValue.ToString();
+Program.Parameter("PowerMonitor.Clamp1Watts").Value = "0";
+Program.Parameter("PowerMonitor.Clamp2Watts").Value = "0";
+
+Program.AddControlWidget( "homegenie/generic/sensor" );
+
+while (Program.IsEnabled)
+{
+    var energymeter = Modules.WithName("Home Energy Counter").Get();
+  
+  	//Pause(5);
+  
+    energymeter.Command("MultiInstance.Get").Execute("Sensor.MultiLevel/1"); // Execute and Set are aliases 
+    energymeter.Command("MultiInstance.Get").Execute("Sensor.MultiLevel/2"); // Execute and Set are aliases 
+    
+  	Pause(10);
+  
+  	//var isarmed = (Program.WithName("Security Alarm System").Parameter("HomeGenie.SecurityArmed").Value == "1");
+	    
+    var sensor1_ProductionEnergy = energymeter.Parameter("ZWaveNode.MultiInstance.SensorMultiLevel.1");
+    var sensor2_ConsumedEnergy = energymeter.Parameter("ZWaveNode.MultiInstance.SensorMultiLevel.2");
+  	Program.Parameter("PowerMonitor.Clamp1Watts").Value = sensor1_ProductionEnergy.DecimalValue.ToString();
+	Program.Parameter("PowerMonitor.Clamp2Watts").Value = sensor2_ConsumedEnergy.DecimalValue.ToString();
+    if (Program.InputField("PowerMonitor.InstalledMaxPowerWatts").Value != "0") {
+      var sum = sensor1_ProductionEnergy.DecimalValue + sensor2_ConsumedEnergy.DecimalValue;
+      Program.RaiseEvent(energymeter, "Meter.Watts", sum.ToString("0.000"), "HEM2 Meter Report");
+    }
+    
+  //if (sensor1_ProductionEnergy.DecimalValue &lt; Program.InputField("PowerMonitor.FVInverterConsumingInIdleModeWatts").DecimalValue)
+  	if (sensor1_ProductionEnergy.DecimalValue &lt; 22D)
+      	Program.Parameter("PowerMonitor.ProducingWatts").Value = "0";
+  	else
+  		Program.Parameter("PowerMonitor.ProducingWatts").Value = (string)sensor1_ProductionEnergy.DecimalValue.ToString();
+  
+  	if (Program.Parameter("PowerMonitor.ProducingWatts").DecimalValue == 0)
+      Program.Parameter("PowerMonitor.ConsumingWatts").Value = (string)(sensor2_ConsumedEnergy.DecimalValue + sensor1_ProductionEnergy.DecimalValue).ToString();      	
+    else
+      Program.Parameter("PowerMonitor.ConsumingWatts").Value = (string)sensor2_ConsumedEnergy.DecimalValue.ToString();
+		
+  
+  	
+    Program.Parameter("PowerMonitor.DifferenceWatts").Value = (string)(Program.Parameter("PowerMonitor.ProducingWatts").DecimalValue - Program.Parameter("PowerMonitor.ConsumingWatts").DecimalValue).ToString();
+
+  
+  	if ((sensor1_ProductionEnergy.DecimalValue - sensor2_ConsumedEnergy.DecimalValue) &gt; 0)
+		Program.Parameter("PowerMonitor.FreeProducingWatts").Value = (string)(sensor1_ProductionEnergy.DecimalValue - sensor2_ConsumedEnergy.DecimalValue).ToString();
+  	else
+      	Program.Parameter("PowerMonitor.FreeProducingWatts").Value = "0";
+  
+  
+  	Program.Parameter("PowerMonitor.FreeConsumingWatts").Value = (Program.InputField("PowerMonitor.InstalledMaxPowerWatts").DecimalValue + Program.Parameter("PowerMonitor.ProducingWatts").DecimalValue - Program.Parameter("PowerMonitor.ConsumingWatts").DecimalValue).ToString();
+  
+    //Program.Notify("Energy Meter", "Production kw: " + sensor1_ProductionEnergy.DecimalValue.ToString() + " / Consumed kw: "+sensor2_ConsumedEnergy.DecimalValue.ToString());;          
+  
+    //
+    var differenceloadswatts = Program.Parameter("PowerMonitor.DifferenceWatts").DecimalValue;
+    var devcount = 0;
+  
+    Modules.Each((mod)=&gt;{      
+      
+      if ( (mod.HasFeature("PowerMonitor.PowerMonitorLedSignals")) &amp;&amp; (mod.IsOfDeviceType("Switch")) ) {
+        
+        if (mod.Parameter("Meter.Watts").DecimalValue &gt; 0)
+        {
+          //if module is absorbing power...
+          
+          	//Program.Notify("Energy Meter ", mod.Parameter("Meter.Watts").DecimalValue.ToString() );
+          
+        	//freeloadwatts -= mod.Parameter("Meter.Watts").DecimalValue;            
+        	devcount++;
+          
+          	if (differenceloadswatts  &gt; 0D) {
+              mod.Command("Config.ParameterSet").Set("61/4"); //green led on fibaro wall plug switch!
+          	}
+          	else if ( (differenceloadswatts &lt;= 0D) &amp;&amp; (differenceloadswatts &gt; -500D) ) {
+              mod.Command("Config.ParameterSet").Set("61/6"); //yellow led on fibaro wall plug switch!
+          	}
+          	else {
+              mod.Command("Config.ParameterSet").Set("61/3"); //red led on fibaro wall plug switch!
+          	}
+        }  
+        else {
+        	mod.Command("Config.ParameterSet").Set("61/9"); //spegni led
+      	}
+        
+      }
+  
+      return false;
+    });
+  	//
+  
+  //Program.Notify("Energy Meter Free Load Watts counted:", freeloadwatts.ToString() );
+  
+  
+  
+}</ScriptSource>
+  <ScriptErrors />
+  <ConditionType>OnSwitchTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <IsRunning>true</IsRunning>
+  <IsEvaluatingConditionBlock>false</IsEvaluatingConditionBlock>
+  <Features>
+    <ProgramFeature>
+      <FieldType>checkbox</FieldType>
+      <ForDomains />
+      <ForTypes>Switch</ForTypes>
+      <Property>PowerMonitor.PowerMonitorLedSignals</Property>
+      <Description>Use Fibaro Led for PowerMonitor Signals (Red=No AutoConsume,Yellow=Partial Auto-Consume,Green Total Auto-Consume)</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>false</LastConditionEvaluationResult>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>/* This section of code only runs once to initialize */
+/* A "return true;" statement at any point of this code block, will cause the program to run.
+ * For manually activated program, just leave a "return false" statement here. */
+
+Program.Setup(()=&gt;{  
+	/* In this case we added one module with the address "A0" in the domain "HomeAutomation.MCU"
+   domain of type "Switch" and using the "generic switch" widget for displaying it in the control 
+   panel. There are other widgets that can be used (sensor, door, window, light, dimmer etc..) 
+   Btw, a program can also create more that just one module by using AddVirtualModules. */
+  Program.AddVirtualModules("ArduRCswitch", "Switch", "homegenie/generic/switch", 1, 5); /* 5 sensors from 1 to 5 */
+  //Program.AddVirtualModule("Sensor", "S", "Sensor", "homegenie/generic/sensor");
+  Program.AddInputField("DIP1:", "1111110000", "DIPcode1:");
+  Program.AddInputField("DIP2:", "1111101000", "DIPcode2:");
+  Program.AddInputField("DIP3:", "1111100100", "DIPcode3:");
+  Program.AddInputField("Kappak1:", "A1", "Kappakcode1:");
+  //Program.AddControlWidget("homegenie/generic/sensor");
+  Program.AddInputField("Kappak1In:", "14976446", "Kappak1 In");
+  Program.AddInputField("Kappak2In:", "12450686", "Kappak2 In");
+  //Program.AddInputField("Kappa3in", " ", "Kappa3in");
+  Program.AddInputField("In1On", "1361", "DIP1On");
+  Program.AddInputField("In1Off", "1364", "DIP1Off");
+  Program.AddInputField("In2On", "4433", "DIP2On");
+  Program.AddInputField("In2Off", "4436", "DIP2Off");
+  Program.AddInputField("In3On", "5201", "DIP3On");
+  Program.AddInputField("In3Off", "5204", "DIP3Off");
+  Program.AddInputField("In4On", "5393", "DIP3On");
+  Program.AddInputField("In4Off", "5396", "DIP3Off");
+  });
+
+return true;
+</ScriptCondition>
+  <ScriptSource>var portname = "/dev/ttyACM0";
+var module = Modules.InDomain("ArduRCswitch");
+//var sensor = Modules.InDomain("ArduSensor");
+
+Action&lt;string&gt; 
+HandleStringReceived = (string message) =&gt; {
+  
+  	// this will be called every time a message is received from serial port
+   Program.Parameter("Read").Value = message;  
+   Program.Notify("Read", (message));  
+  
+  if (message.Contains(Program.InputField("In1On").Value)) { module.WithAddress("1").On();} else {}
+  if (message.Contains(Program.InputField("In1Off").Value)) { module.WithAddress("1").Off();} else {}
+  if (message.Contains(Program.InputField("In2On").Value)) { module.WithAddress("2").On();} else {}
+  if (message.Contains(Program.InputField("In2Off").Value)) { module.WithAddress("2").Off();} else {}
+  if (message.Contains(Program.InputField("In3On").Value)) { module.WithAddress("3").On();} else {}
+  if (message.Contains(Program.InputField("In3Off").Value)) { module.WithAddress("3").Off();} else {}
+  if (message.Contains(Program.InputField("In4On").Value)) { module.WithAddress("1").On(); module.WithAddress("2").On(); module.WithAddress("3").On();} else {}
+  if (message.Contains(Program.InputField("In4Off").Value)) { module.WithAddress("1").Off(); module.WithAddress("2").Off(); module.WithAddress("3").Off();} else {} 
+  if (message.Contains(Program.InputField("Kappak1In:").Value)) {if (message.Contains("on")) { module.WithAddress("5").On();} else {module.WithAddress("5").Off();}}
+  if (message.Contains(Program.InputField("Kappak2In:").Value)) {if (message.Contains("on")) { module.WithAddress("5").On();} else {module.WithAddress("5").Off();}}
+};
+
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt; {
+  	
+  	// this will be called every time the connection status changes
+  	Program.Notify("SerialPort Status", connected ? "CONNECTED!" : "DISCONNECTED!");
+   /* As a switch, the module should also handle "Control.On" and "Control.Off" commands issued by the user 
+ from the Web user interface, or by scripting. (define Web service) */
+ When.WebServiceCallReceived("ArduRCswitch", ( args ) =&gt;
+    {
+      string adr = "0";
+      string adr1 = "DIP" + Program.InputField("DIP1:").Value;
+      string adr2 = "DIP" + Program.InputField("DIP2:").Value;
+      String adr3 = "DIP" + Program.InputField("DIP3:").Value;
+      String adr5 = "Kappa" + Program.InputField("Kappak1:").Value;
+      string[] reqs = ((string)args).Split('/');
+      var res = "{ 'ResponseValue' : 'ERROR' }";
+      
+      try
+      {
+        string command = reqs[2];
+        string lightnumber = reqs[1];
+        if (lightnumber == "1") {  adr = adr1; }
+        if (lightnumber == "2") {  adr = adr2; }
+        if (lightnumber == "3") {  adr = adr3; }
+        if (lightnumber == "5") {  adr = adr5; }
+                   
+      var mod = module.WithAddress(lightnumber).Get();
+        switch(command)
+        {
+          case "Control.On":
+          	/* eg. Control URL: http://hg_address/api/HomeAutomation.MCU/A0/Control.On */
+            /* eg. here you send a message to the serial port for switch ON the device */
+            Program.RaiseEvent(mod, "Status.Level", "1", "Indicator");
+            res = "{ 'ResponseValue' : 'OK' }";
+            SerialPort.SendMessage(adr + "=on\n");
+         	 break;
+          case "Control.Off":
+          	/* eg. http://hg_address/api/HomeAutomation.MCU/A0/Control.Off */
+            /* here you send a message to the serial port for switch OFF the device */
+            Program.RaiseEvent(mod, "Status.Level", "0", "Indicator");
+            res = "{ 'ResponseValue' : 'OK' }";
+            SerialPort.SendMessage(adr + "=off\n");
+          	break;
+        }
+      }
+      catch (Exception ex)
+      {
+        res = ex.Message + " " + ex.StackTrace;
+      }
+      return res; /* unable to process request */
+      
+    });
+ };
+ 
+
+// open the serial port channel and register handlers
+SerialPort
+  	.WithName( portname )
+  	.OnStatusChanged( HandleStatusChanged )
+  	.OnStringReceived( HandleStringReceived )
+  	.Connect( 9600 ); // change baud rate if needed
+
+while (Program.IsEnabled)
+{
+
+}
+</ScriptSource>
+  <ScriptErrors />
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1008</Address>
+  <Name>Ardu RC switch </Name>
+  <Description />
+  <Group>RCswitch arduino</Group>
+  <Features />
+  <ActivationTime>2015-07-02T15:05:57.47775Z</ActivationTime>
+  <TriggerTime>2015-07-11T17:56:48.937077Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

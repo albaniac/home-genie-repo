@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>var module1DomainDemoLED = "HomeAutomation.ArduinoDemoLED";
+var moduleDomainDemoButton = "HomeAutomation.ArduinoDemoButton";
+Program.Setup(()=&gt;
+{
+  Program.AddVirtualModules(module1DomainDemoLED, "Switch", "homegenie/generic/switch", 1, 2);  
+  Program.AddVirtualModules(moduleDomainDemoButton, "Sensor", "homegenie/generic/Sensor", 1, 2); 
+});
+return true;</ScriptCondition>
+  <ScriptSource>//------------------------------------------------------------------//
+//                                                                  //
+//      LED write and Butten press detect demo software             //
+//                                                                  //
+//       Writhen for the Arduino Mega 2560 &amp; HG                     //
+//                                                                  //
+//       By IanR on 07-Mar-2017                                     //
+//                                                                  //
+//------------------------------------------------------------------//
+
+//------------------------------------------------------------------//
+//                           Information                            //
+//Commands:                                                         //
+// Input to Arduino                                                 //
+//  LED 1 on "~,1,1"                                                //
+//  LED 1 off "~,1,0"                                               //
+//  LED 2 on "~,2,1"                                                //
+//  LED 2 off "~,2,0"                                               //
+//                                                                  //
+// Output from Arduino                                              //
+//  LED1 on resplnce "LED1 = 1"                                     //
+//  LED1 off responce "LED = 0"                                     //
+//  LED2 on resplnce "LED1 = 2"                                     //
+//  LED2 off responce "LED = 2"                                     //
+//  Button 1 on "Button,1,1"                                        //
+//  Button 1 off "Button,1,0"                                       //
+//  Button 2 on "Button,2,1"                                        //
+//  Button 2 off "Button,2,0"                                       //
+//                                                                  //
+//------------------------------------------------------------------//
+
+var portname = "COM7"; 	//	 change as requered												// The USB port number of the Arduino, COMx can be used on windows computers, where x is the Port Number (Find in device manager)
+
+var module1 = Modules.InDomain("HomeAutomation.ArduinoDemo").WithAddress("1").Get();  		// Load the verbal with a module info
+
+
+
+
+// --- How to handel resiving a String from the Arduino and what to do with it (When the switches are pressed on the Arduino ---  								// how to react to the button press on the Arduino
+Action&lt;string&gt;  	   																		// A string has been received on the set port so do this code:
+HandleStringReceived = (string message) =&gt; {												// Handel the resaved string.
+const string Dashboard = "HomeAutomation.Dashboard";
+  
+// --- variables setup ---
+
+int SenserCount1 = 0;																		// Setup the count for the sensors 
+
+bool SenserIf1;   																			//Set up the if statement for each loop
+  				
+string SenserCheck1 = "Button"; 															//Setup the strings to house the key words
+																						
+string ModAdress1 = "";																		//Setup the addressing units
+
+string[] RxValue1;																			// Holds the values that have been set in, from the USB port
+
+// ------------ Hold the decimal vision of the corresponding string value eg Value1 = decimal of RxValue1 -
+decimal Value1 = 0;
+decimal Value2 = 0;
+decimal Value3 = 0;
+decimal Value4 = 0;
+decimal Value5 = 0;
+decimal Value6 = 0;
+
+char[] delimiterChars = {','}; 																// Set the delaminate for the incoming message that sets the heading and the value.
+
+// ----------- Holds the string value used to hold the data value of the reserved message as required----
+String Value0S1;
+String Value0S2;
+String Value0S3;
+String Value1S1;
+  
+// -------------- Deal with the incoming message--------------------------------------------------------
+string MessageReseved = message;   
+SenserIf1 = MessageReseved.Contains(SenserCheck1); 										// Checking if the string from the Arduino is a Button
+    if (SenserIf1)																
+     {
+      SenserCount1 = 1;        															// Reset counter to zero.
+      while ((SenserCount1) &lt; 3)  														// Loop to check all input Buttons on Arduino.)  
+       {
+       RxValue1 = message.Split(delimiterChars);										// Split the received message up into its parts suing the comma as the separate
+       Value0S1 = (RxValue1[0]);														// Get the parts from the array of split parts of the received message and put into individual variables
+       Value0S2 = (RxValue1[1]);														// Get the parts from the array of split parts of the received message and put into individual variables
+       Value0S3 = (RxValue1[2]);														// Get the parts from the array of split parts of the received message and put into individual variables 
+       ModAdress1 = (SenserCount1).ToString();       
+      var CountIf1 = Value0S2.Contains(ModAdress1);										// Checking if the string from the Arduino is a button ON and witch one
+        if (CountIf1)																	
+         {
+          Program.Notify("HomeAutomation.ArduinoDemo", "Value0S1 = " +Value0S1 + "ModAdress1 = " + "&amp;lt;br&amp;gt;" + ModAdress1 + "&amp;lt;br&amp;gt;"+ message);		// Popup message to screen
+          module1 = Modules.InDomain("HomeAutomation.ArduinoDemoButton").WithAddress(ModAdress1).Get(); 						// Set up Widget to address/communicate with 	
+          Program.RaiseEvent(module1, "Status.Level",Value0S3,"");						// Set count to maximum to stop loop as you have fond button number to work on
+          SenserCount1 = 3;
+         }
+      SenserCount1 ++;																	// Increment the counter 
+     }    
+  } 
+};
+
+// --- Sent strings to the arduino to activate the LEDS
+
+var moduleDomain = "HomeAutomation.ArduinoDemo";
+When.WebServiceCallReceived(moduleDomain, ( args ) =&gt; 
+{
+	string[] reqs = ((string)args).Split('/');												// Split the incoming string up using the "/" as the split point to find out the parts of the command
+	var res = "{ 'ResponseValue' : 'ERROR' }";
+	try
+	{
+	    string SwitchId = reqs[1];															// Holds the Address of the switch that has been changed
+	    string Command = reqs[2];															// Holds the command that has been sent eg on or off (Control.On or Control.Off)
+	    // get reference to the virtual module 
+	    var module = Modules.InDomain(moduleDomain).WithAddress(SwitchId).Get();
+	  	//
+	  if (SwitchId == "1" || SwitchId == "2")												// Only react if its the correct switches requesting a change eg switch 1 or 2.
+            switch(Command)																	// Start State case so that the code will decide what to do depending on what the case are set to and what the command has in it.
+	    {
+	      	// eg. http://hg_address/api/HomeAutomation.ArduinoDemo/3/Control.On
+	      	case "Control.On":																// If switch is ON then:
+	      	SerialPort.SendMessage("~," + SwitchId + ",1");									// Send command string to Arduino command (is grad band "~" separator "," LED number eg "1" separator "," What value you want the LED eg on "1" or Off "0")
+			break;	
+          	// eg. http://hg_address/api/HomeAutomation.ArduinoDemo/3/Control.Off
+	      	case "Control.Off":																// If switch is OFF then:
+	      	SerialPort.SendMessage("~," + SwitchId + ",0");									// Send command string to Arduino command (is grad band "~" separator "," LED number eg "1" separator "," What value you want the LED eg on "1" or Off "0")
+	        break;
+      }
+	} 
+	catch (Exception ex) 
+	{ 
+	    res = ex.Message + " " + ex.StackTrace;
+	}
+	// unable to process request														// Error
+	return res;
+});
+
+// --- What to do with the booliean data (connected / disconnected) from the conection ------------
+Action&lt;bool&gt;
+HandleStatusChanged = (bool connected) =&gt; {                             									// This will be called every time the connection status changes
+  Program.Notify("SerialPort Status", connected ? "CONNECTED!" : "DISCONNECTED!"); 							// Popup messages.
+};
+
+
+// --- Sereail port Setup and mometering ---
+
+SerialPort 																									// Open the serial port channel and register handlers + set variables for send reserve and what to do with com port
+  .WithName( portname )																						// The name of the port the Arduino is connected to this is set at the top of the page.
+  .OnStatusChanged( HandleStatusChanged )																	// This is activated when the connection statues of the selected port changes.
+  .OnStringReceived( HandleStringReceived )																	// This is activated/holds the messages that are reserved on the set port.
+  .Connect( 9600 ); 																						// Change baud rate if needed, (this uses default Parity of None, and 1 Stop Bit).
+
+
+Program.GoBackground();																						//End program and retern back to HG background</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>1026</Address>
+  <Name>LED Button Demo</Name>
+  <Description>Arduino &amp; HG, Coms DEMO program 
+ IanR
+08-Mar-2017</Description>
+  <Group>Arduino</Group>
+  <Features />
+  <ActivationTime>2017-03-09T20:36:22.4895269Z</ActivationTime>
+  <TriggerTime>2017-03-09T20:36:22.646669Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>

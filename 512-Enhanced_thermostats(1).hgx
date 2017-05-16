@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ProgramBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ConditionType>OnTrue</ConditionType>
+  <Conditions />
+  <Commands />
+  <ScriptCondition>// Put your trigger code logic here.
+// To execute the Code To Run,
+// use a 'return true' or 'return false' otherwise.
+Program.Setup(()=&gt;{
+  Program.AddInputField("ThermostatsNumber", "4", "Number of virtual thermostats (Max.8)");
+  int thermsCount = (int)Program.InputField("ThermostatsNumber").DecimalValue;
+  if( thermsCount &gt; 8 )
+    thermsCount = 8;
+  if(thermsCount &gt; 0) 
+  {
+    Program.AddVirtualModules("HomeAutomation.DaniMail", "Thermostat", "DaniMail/generic/thermostats", 1, thermsCount);
+    for(int x = 0; x &lt; thermsCount; x++)
+    {
+      var module = Modules.InDomain("HomeAutomation.DaniMail").WithAddress((x+1).ToString()).Get();
+      if( module.Instance != null &amp;&amp; module.Parameter("ModuleTemperature").Value.Length == 0 )
+      {
+        // Paramètres statiques
+        module.Parameter("TimeTable.W").Value = "0";
+        module.Parameter("TimeTable.O").Value = "1";
+        module.Parameter("TimeTable.F").Value = "2";
+        module.Parameter("TimeTable.S").Value = "3";
+        module.Parameter("Thermostat.SetPoint.NoFrost").Value = "5";
+        module.Parameter("Thermostat.SetPoint.Eco").Value = "16";
+        module.Parameter("Thermostat.SetPoint.Heating").Value = "20";
+        // Pamètres dynamiques
+        module.Parameter("Sensor.Temperature").Value = "";
+        module.Parameter("Sensor.Humidity").Value = "";
+        module.Parameter("Status.Battery").Value = "";
+        module.Parameter("Thermostat.OperatingState").Value = "";
+        module.Parameter("Thermostat.Mode").Value = "Arrêt";
+      }
+    }
+  }
+  Program.AddFeatureTextInput("HomeAutomation.DaniMail", "Thermostat", "ModuleTemperature", "Module to read temperature from");
+  Program.AddFeatureTextInput("HomeAutomation.DaniMail", "Thermostat", "SwitchModule1", "Module 1 to switch on/off");  
+  Program.AddFeatureTextInput("HomeAutomation.DaniMail", "Thermostat", "SwitchModule2", "Module 2 to switch on/off");  
+  Program.AddFeatureTextInput("HomeAutomation.DaniMail", "Thermostat", "SwitchModule3", "Module 3 to switch on/off");  
+});
+
+return true;
+</ScriptCondition>
+  <ScriptSource>// CSharp Automation Program Plugin
+const int HOLDING_MODE_DIFF = 1;
+
+char typeDay,typeAction ;
+string currentTable = "";
+string newTable = "";
+string szState = "";
+int index, currentMonth = -1;
+double temperatureAComparer = 0;
+string currentMode = "";
+int thermsCount = 0;
+int nTempo=60;
+
+bool[] holdingMode = new bool[8];
+string tabMon = "";
+string tabScene = "";
+
+var ThermostatLogicRun = new Func&lt;bool&gt;(()=&gt;{
+  string domainAddress = "";
+  string domain = "";
+  string address = "";
+
+  thermsCount = (int)Program.InputField("ThermostatsNumber").DecimalValue;
+  if( thermsCount &gt; 8 )
+     thermsCount = 8;
+  for(int x=0;x&lt;thermsCount;x++)
+  {
+    var moduleVirtuel = Modules.InDomain("HomeAutomation.DaniMail").WithAddress((x+1).ToString()).Get();
+    
+    if( moduleVirtuel.Instance.Name == "" )
+    {
+        Pause(1) ;
+        continue ;
+    }
+    var name = "Thermostat " + moduleVirtuel.Instance.Name ;
+    var temperature = moduleVirtuel.Parameter("Sensor.Temperature");
+    var operatingState = moduleVirtuel.Parameter("Thermostat.OperatingState");
+    var thermostatMode = moduleVirtuel.Parameter("Thermostat.Mode").Value;
+    double nofrostSetPoint = moduleVirtuel.Parameter("Thermostat.SetPoint.NoFrost").DecimalValue;
+    double ecoSetPoint = moduleVirtuel.Parameter("Thermostat.SetPoint.Eco").DecimalValue;
+    double heatSetPoint = moduleVirtuel.Parameter("Thermostat.SetPoint.Heating").DecimalValue;
+    // Get a reference to the temperature module
+    domainAddress = moduleVirtuel.Parameter("ModuleTemperature").Value;
+    if (domainAddress != "" &amp;&amp; domainAddress.LastIndexOf(":") &gt; 0)
+    {
+      domain = domainAddress.Substring(0, domainAddress.LastIndexOf(":"));
+      address = domainAddress.Substring(domainAddress.LastIndexOf(":") + 1);
+    }
+    var temperatureModule = Modules.InDomain(domain).WithAddress(address).Get();
+    if (String.IsNullOrWhiteSpace(domain) || String.IsNullOrWhiteSpace(address) || temperatureModule.Instance == null)
+    {
+      Program.RaiseEvent(moduleVirtuel,"Thermostat.OperatingState", "! Erreur MT", "Thermostat");
+      Program.Notify(name, "Spécifiez un Module Sonde valide.");
+      Pause(2);
+      continue;
+    }
+    // Get a reference to the switch/relay module 1
+    domain = address = "";
+    domainAddress = moduleVirtuel.Parameter("SwitchModule1").Value;
+    if (domainAddress != "" &amp;&amp; domainAddress.LastIndexOf(":") &gt; 0)
+    {
+      domain = domainAddress.Substring(0, domainAddress.LastIndexOf(":"));
+      address = domainAddress.Substring(domainAddress.LastIndexOf(":") + 1);
+    }
+    var switchModule = Modules.InDomain(domain).WithAddress(address).Get();
+    if (String.IsNullOrWhiteSpace(domain) || String.IsNullOrWhiteSpace(address) || switchModule.Instance == null)
+    {
+      Program.RaiseEvent(moduleVirtuel,"Thermostat.OperatingState", "! Erreur MS", "Thermostat");
+      Program.Notify(name, "Spécifiez un Module Switch valide.");
+      Pause(2);
+      continue;
+    }
+    // Get a reference to the switch/relay module 2
+    domain = address = "";
+    domainAddress = moduleVirtuel.Parameter("SwitchModule2").Value;
+    if (domainAddress != "" &amp;&amp; domainAddress.LastIndexOf(":") &gt; 0)
+    {
+      domain = domainAddress.Substring(0, domainAddress.LastIndexOf(":"));
+      address = domainAddress.Substring(domainAddress.LastIndexOf(":") + 1);
+    }
+    bool switch2 = true ;
+    var switchModule2 = Modules.InDomain(domain).WithAddress(address).Get();
+    if (String.IsNullOrWhiteSpace(domain) || String.IsNullOrWhiteSpace(address) || switchModule2.Instance == null)
+      switch2 = false ;
+    // Get a reference to the switch/relay module 3
+    domain = address = "";
+    domainAddress = moduleVirtuel.Parameter("SwitchModule3").Value;
+    if (domainAddress != "" &amp;&amp; domainAddress.LastIndexOf(":") &gt; 0)
+    {
+      domain = domainAddress.Substring(0, domainAddress.LastIndexOf(":"));
+      address = domainAddress.Substring(domainAddress.LastIndexOf(":") + 1);
+    }
+    bool switch3 = true ;
+    var switchModule3 = Modules.InDomain(domain).WithAddress(address).Get();
+    if (String.IsNullOrWhiteSpace(domain) || String.IsNullOrWhiteSpace(address) || switchModule3.Instance == null)
+      switch3 = false ;
+    // Traitement du module virtuel
+    // Update Thermostat module Temperature field
+    temperature.Value = temperatureModule.Parameter("Sensor.Temperature").Value;
+    // Heat Mode
+    typeAction = 'T'; // Test tempétarure
+    currentMode = "";
+    if(thermostatMode == "Comfort")
+    {
+       currentMode = "(C)";
+       temperatureAComparer = heatSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0);
+    }
+    else
+    //  Eco Mode
+    if(thermostatMode == "Eco")
+    {
+       currentMode = "(E)";
+       temperatureAComparer = ecoSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0);
+    }
+    else
+    // NoFrost Mode
+    if (thermostatMode == "NoFrost")
+    {
+       currentMode = "(H)";
+       temperatureAComparer = nofrostSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0);
+    }
+    else
+    // Off Mode
+    if (thermostatMode == "Off")
+    {
+       currentMode = "(A)";
+       temperatureAComparer = 0;
+    }
+    else
+    // Program Mode
+    if (thermostatMode == "Program")
+    {
+        DateTime currentTime = DateTime.Now ;
+        if( Settings.Parameter("Schedule.Set").Value == "1" )
+        {
+           Settings.Parameter("Schedule.Set").Value = "0" ;
+//         Program.Notify("Thermostat","Schedule.Set 1") ;
+           currentMonth = -1 ;
+           currentTable = "" ;
+        }
+        if( currentMonth != currentTime.Month )
+        {
+            currentMonth = currentTime.Month - 1 ;
+            tabMon = Settings.Parameter( "Calend.Year." + currentMonth ).Value ;
+        }
+        if( tabMon.Length &lt; currentTime.Day )
+        {
+            typeAction = 'E'; // Erreur
+            szState = "! Erreur LGCA";
+            Program.Notify("Eclairage","Calendrier Erreur LG mois "+currentTime.Month) ;
+            continue;
+        }
+        typeDay = tabMon[currentTime.Day-1] ;
+        newTable = moduleVirtuel.Parameter("TimeTable."+typeDay).Value;
+        if( newTable.Length != 0 )
+        {
+           if( newTable != currentTable )
+           {
+               currentTable = newTable ;
+               tabScene = Settings.Parameter( "Table.Therm." + currentTable ).Value ;
+           }
+        }
+        else
+        {
+           szState = "! Erreur THND";
+           typeAction = 'E'; // Erreur
+           Program.Notify(name+" Jour "+typeDay, "TH non définie") ;
+        }
+        if( tabScene.Length == 96 )
+        {
+          index = (int)(currentTime.Hour*4)+(int)(currentTime.Minute/15) ;
+          switch( tabScene[index])
+          {
+              case 'A' :
+                  currentMode = "(A)";
+                  temperatureAComparer = 0 ;
+                  break ;
+              case 'H' :
+                  currentMode = "(H)" ;
+                  temperatureAComparer = nofrostSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0) ;
+                  break ;
+              case 'E' :
+                  currentMode = "(E)" ;
+                  temperatureAComparer = ecoSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0) ;
+                  break ;
+              case 'C' :
+                  currentMode = "(C)" ;
+                  temperatureAComparer = heatSetPoint - (holdingMode[x] ? HOLDING_MODE_DIFF : 0) ;
+                  break ;
+              default :
+                  temperatureAComparer = 0 ;
+                  szState = "! Erreur THAI";
+                  typeAction = 'E'; // Erreur
+                  Program.Notify(name,"TH Action indéfinie '"+tabScene[index]+"'") ;
+                  break ;
+          }
+        }
+        else
+        {
+           if( newTable.Length != 0 )
+           {
+              szState = "! Erreur LGTH";
+              typeAction = 'E'; // Erreur
+              Program.Notify(name+" Jour "+typeDay, "TH Erreur longueur") ;
+           }
+        }
+    }
+    else
+    {
+       szState = "! Erreur MODE";
+       typeAction = 'E'; // Erreur
+       Program.Notify(name, "Erreur Mode "+thermostatMode) ;
+    }
+    if(typeAction == 'T')
+    {
+       if ( temperatureAComparer != 0 )
+       {
+          if (temperature.DecimalValue &lt; temperatureAComparer)
+          {
+             if(switchModule.IsOff || (operatingState.Value != currentMode+"On"))
+                holdingMode[x] = false;
+             szState = "On";
+          }
+          else
+          {
+            if (switchModule.IsOn || (operatingState.Value != currentMode+"Off")) 
+               holdingMode[x] = true;
+            szState = "Off";
+          }
+       }
+       else
+       {
+          holdingMode[x] = false;
+          szState = "Off";
+       }
+    }
+    else
+        holdingMode[x] = false;
+    if(szState == "On")
+    {
+      switchModule.On();
+      if( switch2 == true )
+        switchModule2.On();
+      if( switch3 == true )
+        switchModule3.On();
+    }
+    else
+    {
+      switchModule.Off();
+      if( switch2 == true )
+        switchModule2.Off();
+      if( switch3 == true )
+        switchModule3.Off();
+    }
+    // Store last time the switch change of state
+    if(operatingState.Value != currentMode+szState)
+       Program.RaiseEvent(moduleVirtuel,"Thermostat.OperatingState", currentMode+szState, "Thermostat");
+    Pause(2);
+  }
+  return true;
+});
+
+When.ModuleParameterChanged((module, parameter)=&gt;{
+    if (parameter.Is("Sensor.Temperature") || parameter.Is("Sensor.Humidity") || parameter.Is("Status.Battery"))
+    {
+      string domainAddress = "";
+      string domain = "";
+      string address = "";
+      for(int x = 0; x &lt; thermsCount; x++)
+      {
+         var moduleVirtuel = Modules.InDomain("HomeAutomation.DaniMail").WithAddress((x+1).ToString()).Get();
+         domainAddress = moduleVirtuel.Parameter("ModuleTemperature").Value;
+         if (domainAddress != "" &amp;&amp; domainAddress.LastIndexOf(":") &gt; 0)
+         {
+            domain = domainAddress.Substring(0, domainAddress.LastIndexOf(":"));
+            address = domainAddress.Substring(domainAddress.LastIndexOf(":") + 1);
+            if( (module.Instance.Domain.ToLower() == domain.ToLower()) &amp;&amp; (module.Instance.Address.ToLower() == address.ToLower()))
+            {
+                Program.RaiseEvent(moduleVirtuel,parameter.Name,parameter.Value,"Thermostat");
+                // Program.Notify("Thermostat","Set "+module.Instance.Name+" "+parameter.Value+"°");
+                nTempo=0;
+                break;
+            }
+         }
+         domain = address = "";
+      }
+    }
+    return true;
+});
+
+// implement Web API calls as defined in the Thermostat widget
+When.WebServiceCallReceived("HomeAutomation.DaniMail", (args)=&gt;
+{
+    string[] reqs = ((string)args).Split('/');
+
+    string thermNumber = reqs[1];
+    string command = reqs[2];
+    string parametre = reqs[3];
+    int nTherm;
+
+    switch( command )
+    {
+        case "Thermostat.SetPointSet":
+           nTherm = Int32.Parse(thermNumber);
+           var moduleS = Modules.InDomain("HomeAutomation.DaniMail").WithAddress(thermNumber).Get();
+           if( parametre == "Heating")
+           {
+              Program.RaiseEvent(moduleS,"Thermostat.SetPoint.Heating", reqs[4], "Thermostat");
+              holdingMode[nTherm-1] = false;
+           }
+           if ( parametre == "Eco")
+           {
+
+             Program.RaiseEvent(moduleS,"Thermostat.SetPoint.Eco", reqs[4], "Thermostat");
+             holdingMode[nTherm-1] = false;
+           }
+           if ( parametre == "NoFrost")
+           {
+             Program.RaiseEvent(moduleS,"Thermostat.SetPoint.NoFrost", reqs[4], "Thermostat");
+             holdingMode[nTherm-1] = false;
+           }
+           nTempo=0;
+           break;
+        case "Thermostat.SetTable":
+           nTherm = Int32.Parse(thermNumber);
+           var moduleT = Modules.InDomain("HomeAutomation.DaniMail").WithAddress(thermNumber).Get();
+           if( parametre == "W")
+           {
+              Program.RaiseEvent(moduleT,"Table."+parametre, reqs[4], "Thermostat");
+              holdingMode[nTherm-1] = false;
+           }
+           if( parametre == "O")
+           {
+              Program.RaiseEvent(moduleT,"Table."+parametre, reqs[4], "Thermostat");
+              holdingMode[nTherm-1] = false;
+           }
+           if( parametre == "F")
+           {
+              Program.RaiseEvent(moduleT,"Table."+parametre, reqs[4], "Thermostat");
+              holdingMode[nTherm-1] = false;
+           }
+           if( parametre == "S")
+           {
+              Program.RaiseEvent(moduleT,"Table."+parametre, reqs[4], "Thermostat");
+              holdingMode[nTherm-1] = false;
+           }
+           nTempo=0;
+           break;
+      case "Thermostat.ModeSet" :
+           nTherm = Int32.Parse(thermNumber);
+           var moduleM = Modules.InDomain("HomeAutomation.DaniMail").WithAddress(thermNumber).Get();
+           Program.RaiseEvent(moduleM,"Thermostat.Mode", parametre, "Thermostat");
+           Program.RaiseEvent(moduleM,"Thermostat.OperatingState", "---", "Thermostat");
+           holdingMode[nTherm-1] = false;
+           nTempo=0;
+           break;
+    }
+    return true;
+});
+
+while (Program.IsEnabled)
+{
+   nTempo=300;
+   ThermostatLogicRun();
+   if(nTempo == 300)
+   {
+     DateTime currentTime = DateTime.Now ;
+     nTempo = ((5-(currentTime.Minute%5))*60)-currentTime.Second;
+     // Program.Notify("Thermostat","Réveil dans "+nTempo+" sec.");
+   }
+//   else
+//     Program.Notify("Thermostat","Réveil immédiat ...");
+   while( nTempo &gt; 0 )
+   {
+     Pause(1);
+     nTempo-- ;
+   };
+}
+</ScriptSource>
+  <ScriptErrors>[]</ScriptErrors>
+  <IsRunning>true</IsRunning>
+  <Features>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.DaniMail</ForDomains>
+      <ForTypes>Thermostat</ForTypes>
+      <Property>ModuleTemperature</Property>
+      <Description>Module to read temperature from</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.DaniMail</ForDomains>
+      <ForTypes>Thermostat</ForTypes>
+      <Property>SwitchModule1</Property>
+      <Description>Module 1 to switch on/off</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.DaniMail</ForDomains>
+      <ForTypes>Thermostat</ForTypes>
+      <Property>SwitchModule2</Property>
+      <Description>Module 2 to switch on/off</Description>
+    </ProgramFeature>
+    <ProgramFeature>
+      <FieldType>text</FieldType>
+      <ForDomains>HomeAutomation.DaniMail</ForDomains>
+      <ForTypes>Thermostat</ForTypes>
+      <Property>SwitchModule3</Property>
+      <Description>Module 3 to switch on/off</Description>
+    </ProgramFeature>
+  </Features>
+  <LastConditionEvaluationResult>true</LastConditionEvaluationResult>
+  <Domain>HomeAutomation.HomeGenie.Automation</Domain>
+  <Address>512</Address>
+  <Name>Enhanced thermostats</Name>
+  <Description>Timetable based scheduler for thermostats.
+Also implementing virtual thermostas that can bind to any user specified temperature sensor and switch modules.
+</Description>
+  <Group>Weather and Enviroment</Group>
+  <ActivationTime>2015-01-25T19:16:22.076122Z</ActivationTime>
+  <TriggerTime>2017-04-24T10:48:28.006372Z</TriggerTime>
+  <Type>CSharp</Type>
+  <IsEnabled>true</IsEnabled>
+</ProgramBlock>
